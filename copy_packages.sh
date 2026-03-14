@@ -7,7 +7,7 @@ echo "=================================================="
 echo ""
 
 SOURCE_VENV="/home/kartiksakhuja02/Documents/Valorant-Mobile-Tournament/venv"
-TARGET_VENV="/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv"
+TARGET_VENV="/home/kartiksakhuja02/Documents/VEGA-Queue-System/venv"
 
 echo "Source: $SOURCE_VENV"
 echo "Target: $TARGET_VENV"
@@ -58,9 +58,10 @@ echo "✅ Packages copied successfully!"
 echo "=================================================="
 echo ""
 echo "Now testing imports..."
-cd /home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue
+cd /home/kartiksakhuja02/Documents/VEGA-Queue-System
 source venv/bin/activate
 python3 -c "import google.generativeai; import PIL; print('✅ All imports working!')"
 
 echo ""
 echo "You can now start the bot!"
+

@@ -2,6 +2,35 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+from pathlib import Path
+
+GFX_DIR = Path(__file__).resolve().parent.parent / 'GFX'
+
+
+def _find_gfx_asset(candidates: list[str]) -> Path | None:
+    for name in candidates:
+        candidate = GFX_DIR / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def build_branding_files() -> tuple[list[discord.File], bool, bool]:
+    files: list[discord.File] = []
+    has_banner = False
+    has_logo = False
+
+    banner = _find_gfx_asset(['vega_banner.jpg', 'banner.jpg'])
+    if banner:
+        files.append(discord.File(str(banner), filename='vega_banner.jpg'))
+        has_banner = True
+
+    logo = _find_gfx_asset(['vega_logo.jpeg', 'vega_logo.jpg', 'logo.jpeg'])
+    if logo:
+        files.append(discord.File(str(logo), filename='vega_logo.jpeg'))
+        has_logo = True
+
+    return files, has_banner, has_logo
 
 class VerificationButton(discord.ui.Button):
     """Persistent button for verification"""
@@ -40,7 +69,7 @@ class VerificationButton(discord.ui.Button):
             embed = discord.Embed(
                 title="✅ Verification Successful",
                 description=(
-                    f"Welcome to **VALM India Queue**!\n\n"
+                    f"Welcome to **VEGA Assassins Matchmaking**!\n\n"
                     f"You now have the {role.mention} role and can participate in skrimmish matches.\n\n"
                     f"**Next Steps:**\n"
                     f"• Register your IGN with `/ign <your_name>`\n"
@@ -105,9 +134,9 @@ class VerificationCog(commands.Cog):
         
         # Create embed
         embed = discord.Embed(
-            title="🎯 VALM India Queue - Verification",
+            title="🎯 VEGA Assassins Matchmaking - Verification",
             description=(
-                "**Welcome to Valorant Mobile India's Premier Matchmaking System!**\n\n"
+                "**Welcome to VEGA Assassins' Premier Matchmaking System!**\n\n"
                 "Get verified to unlock access to competitive skrimmish matches, "
                 "track your progress, and climb the leaderboards.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -122,15 +151,24 @@ class VerificationCog(commands.Cog):
             ),
             color=0x5865F2  # Discord Blurple - Professional color
         )
-        embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
+        files, has_banner, has_logo = build_branding_files()
+        if has_logo:
+            embed.set_thumbnail(url='attachment://vega_logo.jpeg')
+        else:
+            embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
+        if has_banner:
+            embed.set_image(url='attachment://vega_banner.jpg')
         embed.set_footer(
-            text="VALM India • Competitive Skrimmish Matchmaking",
+            text="VEGA Assassins • Competitive Matchmaking",
             icon_url=interaction.guild.icon.url if interaction.guild.icon else None
         )
         
         # Send the verification message
         view = VerificationView()
-        await interaction.channel.send(embed=embed, view=view)
+        if files:
+            await interaction.channel.send(files=files, embed=embed, view=view)
+        else:
+            await interaction.channel.send(embed=embed, view=view)
         
         await interaction.response.send_message(
             "✅ Verification UI has been posted!",
@@ -148,3 +186,4 @@ class VerificationCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(VerificationCog(bot))
+

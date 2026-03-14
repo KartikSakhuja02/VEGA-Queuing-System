@@ -19,7 +19,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-class VALMBot(commands.Bot):
+class VegaAssassinsBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
         self.start_time = time.time()
@@ -71,7 +71,7 @@ class VALMBot(commands.Bot):
         await super().close()
 
 # Initialize bot
-bot = VALMBot()
+bot = VegaAssassinsBot()
 
 # Error handler
 @bot.tree.error
@@ -90,3 +90,5 @@ if __name__ == "__main__":
         print("Error: DISCORD_BOT_TOKEN not found in .env file!")
     else:
         bot.run(TOKEN)
+
+

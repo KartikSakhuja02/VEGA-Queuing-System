@@ -2,7 +2,7 @@
 # Minimal installation script - installs only essential packages without Pillow/OCR support
 
 echo "=================================================="
-echo "VALM India Queue - Minimal Installer"
+echo "VEGA Assassins Matchmaking - Minimal Installer"
 echo "=================================================="
 echo ""
 echo "This installs the bot WITHOUT OCR support"
@@ -43,3 +43,5 @@ echo "To enable OCR later, run:"
 echo "  sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev"
 echo "  pip install google-generativeai Pillow"
 echo ""
+
+

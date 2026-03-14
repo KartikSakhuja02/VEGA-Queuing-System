@@ -1,5 +1,9 @@
--- VALM India Queue Database Schema
+-- VEGA Assassins Matchmaking Database Schema
 -- PostgreSQL Database Schema
+
+-- Optional isolation: keep this bot in its own schema
+CREATE SCHEMA IF NOT EXISTS vega_assassins_matchmaking;
+SET search_path TO vega_assassins_matchmaking, public;
 
 -- Bot Config Table
 -- Stores bot configuration like message IDs, channel IDs, etc.
@@ -73,3 +77,5 @@ CREATE INDEX IF NOT EXISTS idx_skrimmish_matches_created_at ON skrimmish_matches
 CREATE INDEX IF NOT EXISTS idx_user_stats_elo ON user_stats(elo_rating DESC);
 CREATE INDEX IF NOT EXISTS idx_player_profiles_mmr ON player_profiles(mmr DESC);
 CREATE INDEX IF NOT EXISTS idx_player_profiles_ign ON player_profiles(player_ign);
+
+

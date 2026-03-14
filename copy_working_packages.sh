@@ -19,7 +19,7 @@ else
     exit 1
 fi
 
-TARGET_VENV="/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv"
+TARGET_VENV="/home/kartiksakhuja02/Documents/VEGA-Queue-System/venv"
 
 SOURCE_SITE="$SOURCE_VENV/lib/python3.13/site-packages"
 TARGET_SITE="$TARGET_VENV/lib/python3.13/site-packages"
@@ -66,7 +66,7 @@ echo "=================================================="
 echo "Testing imports..."
 echo "=================================================="
 
-cd /home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue
+cd /home/kartiksakhuja02/Documents/VEGA-Queue-System
 source venv/bin/activate
 
 if python3 -c "import google.generativeai; import PIL; print('✅ All imports working!')" 2>&1; then
@@ -76,9 +76,10 @@ if python3 -c "import google.generativeai; import PIL; print('✅ All imports wo
     echo "=================================================="
     echo ""
     echo "Start your bot with:"
-    echo "sudo systemctl restart valmindiaqueue"
+    echo "sudo systemctl restart vega-queue"
 else
     echo ""
     echo "❌ Still missing some packages. Checking what's missing..."
     python3 -c "import google.generativeai" 2>&1
 fi
+

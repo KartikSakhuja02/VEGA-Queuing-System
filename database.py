@@ -1,10 +1,19 @@
 import asyncpg
 import os
+import re
 from typing import Optional
 
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
+        raw_schema = os.getenv('DB_SCHEMA', 'vega_assassins_matchmaking').strip()
+        # Keep schema names SQL-safe and predictable.
+        self.db_schema = raw_schema if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', raw_schema) else 'vega_assassins_matchmaking'
+
+    async def _setup_connection(self, conn: asyncpg.Connection):
+        """Ensure every pooled connection targets this bot's dedicated schema."""
+        await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.db_schema}"')
+        await conn.execute(f'SET search_path TO "{self.db_schema}", public')
     
     async def connect(self):
         """Create a connection pool to the database"""
@@ -16,9 +25,10 @@ class Database:
             database_url,
             min_size=2,
             max_size=10,
-            command_timeout=60
+            command_timeout=60,
+            init=self._setup_connection
         )
-        print("✅ Database connection pool created")
+        print(f"✅ Database connection pool created (schema: {self.db_schema})")
     
     async def disconnect(self):
         """Close the database connection pool"""
@@ -29,6 +39,9 @@ class Database:
     async def initialize_schema(self):
         """Initialize database schema"""
         async with self.pool.acquire() as conn:
+            await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.db_schema}"')
+            await conn.execute(f'SET search_path TO "{self.db_schema}", public')
+
             # Create bot_config table for storing bot settings
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS bot_config (
@@ -168,7 +181,7 @@ class Database:
                 )
             ''')
             
-            print("✅ Database schema initialized")
+            print(f"✅ Database schema initialized (schema: {self.db_schema})")
     
     # Bot Config Methods
     async def set_config(self, key: str, value: str):

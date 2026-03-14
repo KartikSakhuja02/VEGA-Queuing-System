@@ -1,18 +1,20 @@
 [Unit]
-Description=VALM India Queue Discord Bot
+Description=VEGA Assassins Matchmaking Discord Bot
 After=network.target
 
 [Service]
 Type=simple
-User=kartiksakhuja02
-WorkingDirectory=/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue
-ExecStart=/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv/bin/python /home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/bot.py
+User=pi
+WorkingDirectory=/home/pi/VEGA-Queue-System
+ExecStart=/home/pi/VEGA-Queue-System/venv/bin/python /home/pi/VEGA-Queue-System/bot.py
 Restart=always
 RestartSec=10
 
 # Logging
-StandardOutput=append:/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/logs/bot.log
-StandardError=append:/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/logs/bot.error.log
+StandardOutput=append:/home/pi/VEGA-Queue-System/logs/bot.log
+StandardError=append:/home/pi/VEGA-Queue-System/logs/bot.error.log
 
 [Install]
 WantedBy=multi-user.target
+
+
