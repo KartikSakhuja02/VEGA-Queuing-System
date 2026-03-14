@@ -14,6 +14,24 @@ class Database:
         raw_queue_schema = os.getenv('QUEUE_DB_SCHEMA', 'vega_assassins_queue').strip()
         self.queue_db_schema = raw_queue_schema if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', raw_queue_schema) else 'vega_assassins_queue'
 
+    def _require_pool(self) -> asyncpg.Pool:
+        """Return the main pool, or raise a clear error if not connected."""
+        if self.pool is None:
+            raise RuntimeError(
+                "Database not connected. "
+                "Check that DATABASE_URL is set correctly in .env and that PostgreSQL is running."
+            )
+        return self.pool
+
+    def _require_queue_pool(self) -> asyncpg.Pool:
+        """Return the queue pool, or raise a clear error if not connected."""
+        if self.queue_pool is None:
+            raise RuntimeError(
+                "Database not connected. "
+                "Check that DATABASE_URL is set correctly in .env and that PostgreSQL is running."
+            )
+        return self.queue_pool
+
     async def _setup_connection(self, conn: asyncpg.Connection):
         """Ensure every pooled connection targets this bot's dedicated schema."""
         await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.db_schema}"')
@@ -66,7 +84,7 @@ class Database:
     
     async def initialize_schema(self):
         """Initialize database schema"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.db_schema}"')
             await conn.execute(f'SET search_path TO "{self.db_schema}", public')
 
@@ -212,7 +230,7 @@ class Database:
             print(f"✅ Database schema initialized (schema: {self.db_schema})")
 
         # Queue schema can live in a separate database/schema.
-        async with self.queue_pool.acquire() as queue_conn:
+        async with self._require_queue_pool().acquire() as queue_conn:
             await queue_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.queue_db_schema}"')
             await queue_conn.execute(f'SET search_path TO "{self.queue_db_schema}", public')
             await queue_conn.execute('''
@@ -230,7 +248,7 @@ class Database:
     # Bot Config Methods
     async def set_config(self, key: str, value: str):
         """Set a configuration value"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 '''INSERT INTO bot_config (key, value, updated_at) 
                    VALUES ($1, $2, CURRENT_TIMESTAMP)
@@ -241,7 +259,7 @@ class Database:
     
     async def get_config(self, key: str):
         """Get a configuration value"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             value = await conn.fetchval(
                 'SELECT value FROM bot_config WHERE key = $1',
                 key
@@ -251,7 +269,7 @@ class Database:
     # Skrimmish Queue Methods
     async def add_to_queue(self, user_id: int, username: str):
         """Add a user to the skrimmish queue"""
-        async with self.queue_pool.acquire() as conn:
+        async with self._require_queue_pool().acquire() as conn:
             try:
                 await conn.execute(
                     'INSERT INTO skrimmish_queue (user_id, username) VALUES ($1, $2)',
@@ -263,7 +281,7 @@ class Database:
     
     async def remove_from_queue(self, user_id: int):
         """Remove a user from the skrimmish queue"""
-        async with self.queue_pool.acquire() as conn:
+        async with self._require_queue_pool().acquire() as conn:
             result = await conn.execute(
                 'DELETE FROM skrimmish_queue WHERE user_id = $1',
                 user_id
@@ -272,7 +290,7 @@ class Database:
     
     async def get_queue(self):
         """Get all users in the queue"""
-        async with self.queue_pool.acquire() as conn:
+        async with self._require_queue_pool().acquire() as conn:
             rows = await conn.fetch(
                 'SELECT user_id, username, joined_at FROM skrimmish_queue ORDER BY joined_at ASC'
             )
@@ -280,13 +298,13 @@ class Database:
     
     async def get_queue_count(self):
         """Get the number of users in queue"""
-        async with self.queue_pool.acquire() as conn:
+        async with self._require_queue_pool().acquire() as conn:
             count = await conn.fetchval('SELECT COUNT(*) FROM skrimmish_queue')
             return count
     
     async def is_in_queue(self, user_id: int):
         """Check if a user is in the queue"""
-        async with self.queue_pool.acquire() as conn:
+        async with self._require_queue_pool().acquire() as conn:
             result = await conn.fetchval(
                 'SELECT EXISTS(SELECT 1 FROM skrimmish_queue WHERE user_id = $1)',
                 user_id
@@ -295,14 +313,14 @@ class Database:
     
     async def clear_queue(self):
         """Clear the entire queue"""
-        async with self.queue_pool.acquire() as conn:
+        async with self._require_queue_pool().acquire() as conn:
             await conn.execute('DELETE FROM skrimmish_queue')
     
     # Match Methods
     async def create_match(self, player1_id: int, player2_id: int, 
                           player1_username: str, player2_username: str):
         """Create a new match record"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             match_id = await conn.fetchval(
                 '''INSERT INTO skrimmish_matches 
                    (player1_id, player2_id, player1_username, player2_username)
@@ -313,7 +331,7 @@ class Database:
     
     async def get_user_stats(self, user_id: int):
         """Get user statistics"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             stats = await conn.fetchrow(
                 'SELECT * FROM user_stats WHERE user_id = $1',
                 user_id
@@ -323,7 +341,7 @@ class Database:
     # Player Profile Methods
     async def register_player(self, user_id: int, discord_username: str, player_ign: str):
         """Register a new player with their IGN"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             try:
                 await conn.execute(
                     '''INSERT INTO player_profiles 
@@ -345,7 +363,7 @@ class Database:
     
     async def get_player_profile(self, user_id: int):
         """Get a player's profile"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             profile = await conn.fetchrow(
                 'SELECT * FROM player_profiles WHERE user_id = $1',
                 user_id
@@ -361,7 +379,7 @@ class Database:
         Returns:
             Player profile dict or None if not found
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             profile = await conn.fetchrow(
                 '''SELECT * FROM player_profiles 
                    WHERE LOWER(player_ign) = LOWER($1)''',
@@ -371,7 +389,7 @@ class Database:
     
     async def is_player_registered(self, user_id: int):
         """Check if a player is registered"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             result = await conn.fetchval(
                 'SELECT EXISTS(SELECT 1 FROM player_profiles WHERE user_id = $1)',
                 user_id
@@ -380,7 +398,7 @@ class Database:
     
     async def update_player_mmr(self, user_id: int, mmr_change: int):
         """Update a player's MMR (can be positive or negative)"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             # Update MMR and last_updated timestamp
             new_mmr = await conn.fetchval(
                 '''UPDATE player_profiles 
@@ -408,7 +426,7 @@ class Database:
             won: True if player won, False if lost
             mmr_change: MMR change (+32 for win, -27 for loss)
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             profile = await conn.fetchrow(
                 'SELECT wins, losses, games, streak, peak_mmr FROM player_profiles WHERE user_id = $1',
                 user_id
@@ -455,7 +473,7 @@ class Database:
     
     async def update_all_ranks(self):
         """Update previous_rank for all players based on current leaderboard position"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             # Get all players ordered by current rank
             players = await conn.fetch(
                 '''SELECT user_id, 
@@ -482,7 +500,7 @@ class Database:
         Returns:
             List of player profiles ordered by MMR
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             leaderboard = await conn.fetch(
                 '''SELECT user_id, discord_username, player_ign, mmr, wins, losses, 
                           games, streak, winrate, peak_mmr, peak_streak
@@ -504,7 +522,7 @@ class Database:
         Returns:
             List of player profiles ordered by MMR for the specified page
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             leaderboard = await conn.fetch(
                 '''SELECT user_id, discord_username, player_ign, mmr, wins, losses, 
                           games, streak, winrate, peak_mmr, peak_streak, mvp_count, previous_rank
@@ -521,7 +539,7 @@ class Database:
         Returns:
             Integer count of players
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             result = await conn.fetchval(
                 '''SELECT COUNT(*) FROM player_profiles'''
             )
@@ -533,7 +551,7 @@ class Database:
         Returns:
             Number of players reset
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             result = await conn.execute(
                 '''UPDATE player_profiles
                    SET mmr = 700,
@@ -552,7 +570,7 @@ class Database:
     # Autoping Configuration Methods
     async def set_autoping(self, channel_id: int, role_id: int, size: int, delete_after: int):
         """Set autoping configuration for a channel"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 '''INSERT INTO autoping_config (channel_id, role_id, size, delete_after, updated_at)
                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
@@ -563,7 +581,7 @@ class Database:
     
     async def get_autoping(self, channel_id: int):
         """Get autoping configuration for a channel"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             config = await conn.fetchrow(
                 'SELECT * FROM autoping_config WHERE channel_id = $1',
                 channel_id
@@ -572,7 +590,7 @@ class Database:
     
     async def remove_autoping(self, channel_id: int):
         """Remove autoping configuration for a channel"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 'DELETE FROM autoping_config WHERE channel_id = $1',
                 channel_id
@@ -581,7 +599,7 @@ class Database:
     # Persistent Leaderboard Methods
     async def save_leaderboard(self, channel_id: int, message_id: int, page: int = 1):
         """Save or update a persistent leaderboard"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 '''INSERT INTO persistent_leaderboards (channel_id, message_id, current_page, last_updated)
                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
@@ -592,7 +610,7 @@ class Database:
     
     async def get_all_leaderboards(self):
         """Get all persistent leaderboards"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             rows = await conn.fetch(
                 'SELECT channel_id, message_id, current_page FROM persistent_leaderboards'
             )
@@ -600,7 +618,7 @@ class Database:
     
     async def delete_leaderboard(self, channel_id: int):
         """Delete a persistent leaderboard"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 'DELETE FROM persistent_leaderboards WHERE channel_id = $1',
                 channel_id
@@ -612,7 +630,7 @@ class Database:
                                 screenshot_url: str, result_message_id: int = None, 
                                 result_channel_id: int = None):
         """Save a completed match result"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 '''INSERT INTO match_results 
                    (match_id, match_number, winner_id, loser_id, winner_score, loser_score, 
@@ -630,7 +648,7 @@ class Database:
         Returns:
             True if vote was recorded, False if user already voted
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             try:
                 await conn.execute(
                     '''INSERT INTO mvp_votes (match_id, voter_id, voted_for, voted_at)
@@ -647,7 +665,7 @@ class Database:
         Returns:
             Dict with user_id -> vote_count mapping
         """
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             rows = await conn.fetch(
                 '''SELECT voted_for, COUNT(*) as vote_count 
                    FROM mvp_votes 
@@ -659,7 +677,7 @@ class Database:
     
     async def get_total_mvp_votes(self, match_id: str):
         """Get total number of votes for a match"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             result = await conn.fetchval(
                 'SELECT COUNT(*) FROM mvp_votes WHERE match_id = $1',
                 match_id
@@ -668,7 +686,7 @@ class Database:
     
     async def update_player_mvp(self, user_id: int):
         """Increment a player's MVP count"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 '''UPDATE player_profiles 
                    SET mvp_count = mvp_count + 1, last_updated = CURRENT_TIMESTAMP
@@ -678,7 +696,7 @@ class Database:
     
     async def finalize_mvp(self, match_id: str, mvp_user_id: int, total_votes: int):
         """Mark the MVP winner for a match"""
-        async with self.pool.acquire() as conn:
+        async with self._require_pool().acquire() as conn:
             await conn.execute(
                 '''UPDATE match_results 
                    SET mvp_user_id = $2, mvp_votes = $3 
