@@ -83,13 +83,20 @@ class Database:
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS skrimmish_queue (
                     id SERIAL PRIMARY KEY,
-                    user_id BIGINT UNIQUE NOT NULL,
+                    guild_id BIGINT NOT NULL DEFAULT 0,
+                    user_id BIGINT NOT NULL,
                     username VARCHAR(255) NOT NULL,
                     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     valorant_ign VARCHAR(255),
-                    rank VARCHAR(50)
+                    rank VARCHAR(50),
+                    UNIQUE(guild_id, user_id)
                 )
             ''')
+
+            # Migration: move from global queue uniqueness to guild-scoped uniqueness.
+            await conn.execute('ALTER TABLE skrimmish_queue ADD COLUMN IF NOT EXISTS guild_id BIGINT NOT NULL DEFAULT 0')
+            await conn.execute('ALTER TABLE skrimmish_queue DROP CONSTRAINT IF EXISTS skrimmish_queue_user_id_key')
+            await conn.execute('ALTER TABLE skrimmish_queue ADD CONSTRAINT skrimmish_queue_guild_user_key UNIQUE (guild_id, user_id)')
             
             # Create skrimmish_matches table
             await conn.execute('''
@@ -218,13 +225,18 @@ class Database:
             await queue_conn.execute('''
                 CREATE TABLE IF NOT EXISTS skrimmish_queue (
                     id SERIAL PRIMARY KEY,
-                    user_id BIGINT UNIQUE NOT NULL,
+                    guild_id BIGINT NOT NULL DEFAULT 0,
+                    user_id BIGINT NOT NULL,
                     username VARCHAR(255) NOT NULL,
                     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     valorant_ign VARCHAR(255),
-                    rank VARCHAR(50)
+                    rank VARCHAR(50),
+                    UNIQUE(guild_id, user_id)
                 )
             ''')
+            await queue_conn.execute('ALTER TABLE skrimmish_queue ADD COLUMN IF NOT EXISTS guild_id BIGINT NOT NULL DEFAULT 0')
+            await queue_conn.execute('ALTER TABLE skrimmish_queue DROP CONSTRAINT IF EXISTS skrimmish_queue_user_id_key')
+            await queue_conn.execute('ALTER TABLE skrimmish_queue ADD CONSTRAINT skrimmish_queue_guild_user_key UNIQUE (guild_id, user_id)')
             print(f"✅ Queue schema initialized (schema: {self.queue_db_schema})")
     
     # Bot Config Methods
@@ -249,54 +261,55 @@ class Database:
             return value
     
     # Skrimmish Queue Methods
-    async def add_to_queue(self, user_id: int, username: str):
+    async def add_to_queue(self, guild_id: int, user_id: int, username: str):
         """Add a user to the skrimmish queue"""
         async with self.queue_pool.acquire() as conn:
             try:
                 await conn.execute(
-                    'INSERT INTO skrimmish_queue (user_id, username) VALUES ($1, $2)',
-                    user_id, username
+                    'INSERT INTO skrimmish_queue (guild_id, user_id, username) VALUES ($1, $2, $3)',
+                    guild_id, user_id, username
                 )
                 return True
             except asyncpg.UniqueViolationError:
                 return False
     
-    async def remove_from_queue(self, user_id: int):
+    async def remove_from_queue(self, guild_id: int, user_id: int):
         """Remove a user from the skrimmish queue"""
         async with self.queue_pool.acquire() as conn:
             result = await conn.execute(
-                'DELETE FROM skrimmish_queue WHERE user_id = $1',
-                user_id
+                'DELETE FROM skrimmish_queue WHERE guild_id = $1 AND user_id = $2',
+                guild_id, user_id
             )
             return result != 'DELETE 0'
     
-    async def get_queue(self):
+    async def get_queue(self, guild_id: int):
         """Get all users in the queue"""
         async with self.queue_pool.acquire() as conn:
             rows = await conn.fetch(
-                'SELECT user_id, username, joined_at FROM skrimmish_queue ORDER BY joined_at ASC'
+                'SELECT user_id, username, joined_at FROM skrimmish_queue WHERE guild_id = $1 ORDER BY joined_at ASC',
+                guild_id
             )
             return rows
     
-    async def get_queue_count(self):
+    async def get_queue_count(self, guild_id: int):
         """Get the number of users in queue"""
         async with self.queue_pool.acquire() as conn:
-            count = await conn.fetchval('SELECT COUNT(*) FROM skrimmish_queue')
+            count = await conn.fetchval('SELECT COUNT(*) FROM skrimmish_queue WHERE guild_id = $1', guild_id)
             return count
     
-    async def is_in_queue(self, user_id: int):
+    async def is_in_queue(self, guild_id: int, user_id: int):
         """Check if a user is in the queue"""
         async with self.queue_pool.acquire() as conn:
             result = await conn.fetchval(
-                'SELECT EXISTS(SELECT 1 FROM skrimmish_queue WHERE user_id = $1)',
-                user_id
+                'SELECT EXISTS(SELECT 1 FROM skrimmish_queue WHERE guild_id = $1 AND user_id = $2)',
+                guild_id, user_id
             )
             return result
     
-    async def clear_queue(self):
+    async def clear_queue(self, guild_id: int):
         """Clear the entire queue"""
         async with self.queue_pool.acquire() as conn:
-            await conn.execute('DELETE FROM skrimmish_queue')
+            await conn.execute('DELETE FROM skrimmish_queue WHERE guild_id = $1', guild_id)
     
     # Match Methods
     async def create_match(self, player1_id: int, player2_id: int, 
