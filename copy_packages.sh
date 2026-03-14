@@ -29,6 +29,7 @@ echo ""
 
 # ── 3. Auto-discover a working source venv ──
 CANDIDATE_VENVS=(
+    "$HOME/Documents/Valorant-Mobile-India-Queue/venv"
     "$HOME/Documents/Valorant-Mobile-Tournament/venv"
     "$HOME/Documents/Valorant-Tournament/venv"
     "$HOME/Documents/Valm-India-Queue/venv"
