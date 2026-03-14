@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import traceback
 from dotenv import load_dotenv
 import time
 import asyncio
@@ -81,8 +82,17 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     elif isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("You don't have permission to use this command!", ephemeral=True)
     else:
-        print(f"Error: {error}")
-        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
+        # Log the full traceback so it appears in journalctl
+        tb = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
+        print(f"Unhandled command error in /{interaction.command.name if interaction.command else '?'}:\n{tb}")
+        msg = f"An error occurred: `{error}`"
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(msg, ephemeral=True)
+            else:
+                await interaction.followup.send(msg, ephemeral=True)
+        except Exception:
+            pass
 
 # Run the bot
 if __name__ == "__main__":
