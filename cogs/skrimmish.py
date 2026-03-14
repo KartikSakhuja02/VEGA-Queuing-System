@@ -1286,8 +1286,7 @@ class QueueButton(discord.ui.Button):
     
     async def callback(self, interaction: discord.Interaction):
         # Check if user is already in queue
-        guild_id = interaction.guild.id
-        in_queue = await db.is_in_queue(guild_id, interaction.user.id)
+        in_queue = await db.is_in_queue(interaction.user.id)
         
         if in_queue:
             await interaction.response.send_message(
@@ -1297,7 +1296,7 @@ class QueueButton(discord.ui.Button):
             return
         
         # Add user to queue
-        success = await db.add_to_queue(guild_id, interaction.user.id, str(interaction.user))
+        success = await db.add_to_queue(interaction.user.id, str(interaction.user))
         
         if not success:
             await interaction.response.send_message(
@@ -1310,7 +1309,7 @@ class QueueButton(discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         
         # Get updated queue
-        queue = await db.get_queue(guild_id)
+        queue = await db.get_queue()
         
         # Update the queue display
         await self.view.update_queue_display(interaction)
@@ -1369,8 +1368,8 @@ class QueueButton(discord.ui.Button):
             player2 = queue[1]
             
             # Remove them from queue
-            await db.remove_from_queue(guild_id, player1['user_id'])
-            await db.remove_from_queue(guild_id, player2['user_id'])
+            await db.remove_from_queue(player1['user_id'])
+            await db.remove_from_queue(player2['user_id'])
             
             # Create match record
             match_id = await db.create_match(
@@ -1494,8 +1493,7 @@ class LeaveButton(discord.ui.Button):
     
     async def callback(self, interaction: discord.Interaction):
         # Check if user is in queue
-        guild_id = interaction.guild.id
-        in_queue = await db.is_in_queue(guild_id, interaction.user.id)
+        in_queue = await db.is_in_queue(interaction.user.id)
         
         if not in_queue:
             await interaction.response.send_message(
@@ -1505,7 +1503,7 @@ class LeaveButton(discord.ui.Button):
             return
         
         # Remove user from queue
-        success = await db.remove_from_queue(guild_id, interaction.user.id)
+        success = await db.remove_from_queue(interaction.user.id)
         
         if success:
             # Respond to interaction immediately
@@ -1514,7 +1512,7 @@ class LeaveButton(discord.ui.Button):
             await self.view.update_queue_display(interaction)
             
             # Get updated queue
-            queue = await db.get_queue(guild_id)
+            queue = await db.get_queue()
             
             # Cancel inactivity timer if queue is now empty
             if len(queue) == 0:
@@ -1593,9 +1591,9 @@ class QueueView(discord.ui.View):
                 await asyncio.sleep(3600)  # 60 minutes
                 
                 # Clear the queue
-                queue = await db.get_queue(guild.id)
+                queue = await db.get_queue()
                 for player in queue:
-                    await db.remove_from_queue(guild.id, player['user_id'])
+                    await db.remove_from_queue(player['user_id'])
                 
                 # Update queue display with inactivity message
                 channel = guild.get_channel(channel_id)
@@ -1653,7 +1651,7 @@ class QueueView(discord.ui.View):
     
     async def update_queue_display(self, interaction: discord.Interaction):
         """Update the queue embed display"""
-        queue = await db.get_queue(interaction.guild.id)
+        queue = await db.get_queue()
         queue_count = len(queue)
         
         # Create embed with clean NeatQueue style
@@ -2021,7 +2019,7 @@ class SkrimmishCog(commands.Cog):
                     print(f"⚠️ Could not delete old queue message (may have been deleted already)")
             
             # Get existing queue from database (DON'T clear it - persistent queue!)
-            queue = await db.get_queue(channel.guild.id)
+            queue = await db.get_queue()
             queue_count = len(queue)
             
             # Create the queue embed with NeatQueue style
@@ -2148,7 +2146,7 @@ class SkrimmishCog(commands.Cog):
         """Setup the queue UI in the current channel (manual)"""
         
         # Get existing queue from database (persistent)
-        queue = await db.get_queue(interaction.guild.id)
+        queue = await db.get_queue()
         queue_count = len(queue)
         
         # Get old message if exists
@@ -2222,7 +2220,7 @@ class SkrimmishCog(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def clear_queue(self, interaction: discord.Interaction):
         """Clear all players from the queue"""
-        await db.clear_queue(interaction.guild.id)
+        await db.clear_queue()
         
         # Update the queue display
         if self.queue_view.message:
@@ -2236,7 +2234,7 @@ class SkrimmishCog(commands.Cog):
     @app_commands.command(name="queue_status", description="Check current queue status")
     async def queue_status(self, interaction: discord.Interaction):
         """Show the current queue status"""
-        queue = await db.get_queue(interaction.guild.id)
+        queue = await db.get_queue()
         
         if not queue:
             await interaction.response.send_message(
