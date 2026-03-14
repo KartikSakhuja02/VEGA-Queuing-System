@@ -1,0 +1,18 @@
+[Unit]
+Description=VEGA Queue Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/VEGA-Queue-System
+ExecStart=/home/pi/VEGA-Queue-System/venv/bin/python /home/pi/VEGA-Queue-System/bot.py
+Restart=always
+RestartSec=10
+
+# Send logs to journalctl (recommended for service monitoring)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
