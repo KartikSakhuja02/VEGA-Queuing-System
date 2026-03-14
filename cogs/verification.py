@@ -20,12 +20,12 @@ def build_branding_files() -> tuple[list[discord.File], bool, bool]:
     has_banner = False
     has_logo = False
 
-    banner = _find_gfx_asset(['vega_banner.jpg', 'banner.jpg'])
+    banner = _find_gfx_asset(['Vega Banner.jpg', 'vega_banner.jpg', 'banner.jpg'])
     if banner:
         files.append(discord.File(str(banner), filename='vega_banner.jpg'))
         has_banner = True
 
-    logo = _find_gfx_asset(['vega_logo.jpeg', 'vega_logo.jpg', 'logo.jpeg'])
+    logo = _find_gfx_asset(['Vega Logo.jpg', 'vega_logo.jpeg', 'vega_logo.jpg', 'logo.jpeg'])
     if logo:
         files.append(discord.File(str(logo), filename='vega_logo.jpeg'))
         has_logo = True

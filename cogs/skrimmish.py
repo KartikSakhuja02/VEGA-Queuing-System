@@ -70,11 +70,11 @@ def build_branding_files() -> list[discord.File]:
     """Create fresh Discord file objects for brand banner/logo attachments."""
     files: list[discord.File] = []
 
-    banner = _find_gfx_asset(['vega_banner.jpg', 'banner.jpg'])
+    banner = _find_gfx_asset(['Vega Banner.jpg', 'vega_banner.jpg', 'banner.jpg'])
     if banner:
         files.append(discord.File(str(banner), filename=BRAND_BANNER_FILENAME))
 
-    logo = _find_gfx_asset(['vega_logo.jpeg', 'vega_logo.jpg', 'logo.jpeg'])
+    logo = _find_gfx_asset(['Vega Logo.jpg', 'vega_logo.jpeg', 'vega_logo.jpg', 'logo.jpeg'])
     if logo:
         files.append(discord.File(str(logo), filename=BRAND_LOGO_FILENAME))
 

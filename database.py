@@ -6,14 +6,23 @@ from typing import Optional
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
+        self.queue_pool: Optional[asyncpg.Pool] = None
         raw_schema = os.getenv('DB_SCHEMA', 'vega_assassins_matchmaking').strip()
         # Keep schema names SQL-safe and predictable.
         self.db_schema = raw_schema if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', raw_schema) else 'vega_assassins_matchmaking'
+
+        raw_queue_schema = os.getenv('QUEUE_DB_SCHEMA', 'vega_assassins_queue').strip()
+        self.queue_db_schema = raw_queue_schema if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', raw_queue_schema) else 'vega_assassins_queue'
 
     async def _setup_connection(self, conn: asyncpg.Connection):
         """Ensure every pooled connection targets this bot's dedicated schema."""
         await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.db_schema}"')
         await conn.execute(f'SET search_path TO "{self.db_schema}", public')
+
+    async def _setup_queue_connection(self, conn: asyncpg.Connection):
+        """Ensure queue pool connections target the queue schema."""
+        await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.queue_db_schema}"')
+        await conn.execute(f'SET search_path TO "{self.queue_db_schema}", public')
     
     async def connect(self):
         """Create a connection pool to the database"""
@@ -29,9 +38,28 @@ class Database:
             init=self._setup_connection
         )
         print(f"✅ Database connection pool created (schema: {self.db_schema})")
+
+        queue_database_url = os.getenv('QUEUE_DATABASE_URL')
+        if queue_database_url:
+            self.queue_pool = await asyncpg.create_pool(
+                queue_database_url,
+                min_size=1,
+                max_size=5,
+                command_timeout=60,
+                init=self._setup_queue_connection
+            )
+            print(f"✅ Queue database pool created (schema: {self.queue_db_schema})")
+        else:
+            self.queue_pool = self.pool
+            self.queue_db_schema = self.db_schema
+            print(f"ℹ️ Queue database pool reusing main pool (schema: {self.queue_db_schema})")
     
     async def disconnect(self):
         """Close the database connection pool"""
+        if self.queue_pool and self.queue_pool is not self.pool:
+            await self.queue_pool.close()
+            print("❌ Queue database connection pool closed")
+
         if self.pool:
             await self.pool.close()
             print("❌ Database connection pool closed")
@@ -182,6 +210,22 @@ class Database:
             ''')
             
             print(f"✅ Database schema initialized (schema: {self.db_schema})")
+
+        # Queue schema can live in a separate database/schema.
+        async with self.queue_pool.acquire() as queue_conn:
+            await queue_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.queue_db_schema}"')
+            await queue_conn.execute(f'SET search_path TO "{self.queue_db_schema}", public')
+            await queue_conn.execute('''
+                CREATE TABLE IF NOT EXISTS skrimmish_queue (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT UNIQUE NOT NULL,
+                    username VARCHAR(255) NOT NULL,
+                    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    valorant_ign VARCHAR(255),
+                    rank VARCHAR(50)
+                )
+            ''')
+            print(f"✅ Queue schema initialized (schema: {self.queue_db_schema})")
     
     # Bot Config Methods
     async def set_config(self, key: str, value: str):
@@ -207,7 +251,7 @@ class Database:
     # Skrimmish Queue Methods
     async def add_to_queue(self, user_id: int, username: str):
         """Add a user to the skrimmish queue"""
-        async with self.pool.acquire() as conn:
+        async with self.queue_pool.acquire() as conn:
             try:
                 await conn.execute(
                     'INSERT INTO skrimmish_queue (user_id, username) VALUES ($1, $2)',
@@ -219,7 +263,7 @@ class Database:
     
     async def remove_from_queue(self, user_id: int):
         """Remove a user from the skrimmish queue"""
-        async with self.pool.acquire() as conn:
+        async with self.queue_pool.acquire() as conn:
             result = await conn.execute(
                 'DELETE FROM skrimmish_queue WHERE user_id = $1',
                 user_id
@@ -228,7 +272,7 @@ class Database:
     
     async def get_queue(self):
         """Get all users in the queue"""
-        async with self.pool.acquire() as conn:
+        async with self.queue_pool.acquire() as conn:
             rows = await conn.fetch(
                 'SELECT user_id, username, joined_at FROM skrimmish_queue ORDER BY joined_at ASC'
             )
@@ -236,13 +280,13 @@ class Database:
     
     async def get_queue_count(self):
         """Get the number of users in queue"""
-        async with self.pool.acquire() as conn:
+        async with self.queue_pool.acquire() as conn:
             count = await conn.fetchval('SELECT COUNT(*) FROM skrimmish_queue')
             return count
     
     async def is_in_queue(self, user_id: int):
         """Check if a user is in the queue"""
-        async with self.pool.acquire() as conn:
+        async with self.queue_pool.acquire() as conn:
             result = await conn.fetchval(
                 'SELECT EXISTS(SELECT 1 FROM skrimmish_queue WHERE user_id = $1)',
                 user_id
@@ -251,7 +295,7 @@ class Database:
     
     async def clear_queue(self):
         """Clear the entire queue"""
-        async with self.pool.acquire() as conn:
+        async with self.queue_pool.acquire() as conn:
             await conn.execute('DELETE FROM skrimmish_queue')
     
     # Match Methods
