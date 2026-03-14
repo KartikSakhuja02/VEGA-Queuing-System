@@ -27,20 +27,20 @@ class VegaAssassinsBot(commands.Bot):
     
     async def setup_hook(self):
         """This is called when the bot starts up"""
-        # Connect to database
+        # Connect to database (failure is non-fatal — cogs still load)
         try:
             await db.connect()
             await db.initialize_schema()
+            print("✅ Database connected and schema initialised")
         except Exception as e:
-            print(f"❌ Database connection failed: {e}")
-            print("Make sure PostgreSQL is running and DATABASE_URL is correct in .env")
-            return
+            tb = ''.join(traceback.format_exc())
+            print(f"❌ Database connection failed — bot will start without DB:\n{tb}")
         
-        # Load cogs
+        # Load cogs (always, even if DB is down)
         await self.load_cogs()
         
-        # Sync commands globally (can take up to 1 hour)
-        # For faster testing, sync to a specific guild using guild=discord.Object(id=GUILD_ID)
+        # Sync slash commands to the guild immediately (guild sync is instant;
+        # global sync can take up to 1 hour so we always prefer guild sync)
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
             self.tree.copy_global_to(guild=guild)
@@ -48,7 +48,7 @@ class VegaAssassinsBot(commands.Bot):
             print(f"✅ Commands synced to guild {GUILD_ID}")
         else:
             await self.tree.sync()
-            print("✅ Commands synced globally")
+            print("✅ Commands synced globally (may take up to 1 hour to propagate)")
     
     async def load_cogs(self):
         """Load all cogs from the cogs directory"""
