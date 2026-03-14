@@ -1983,16 +1983,33 @@ class SkrimmishCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.queue_view = QueueView(bot)
-        self.queue_channel_id = int(os.getenv('QUEUE_CHANNEL_ID', 0))
+        queue_channel_raw = os.getenv('QUEUE_CHANNEL_ID', '').strip()
+        self.queue_channel_id = int(queue_channel_raw) if queue_channel_raw.isdigit() else 0
         self.setup_done = False
     
     @commands.Cog.listener()
     async def on_ready(self):
         """Called when the bot is ready - setup queue UI automatically"""
         if not self.setup_done and self.queue_channel_id:
-            await self.setup_queue_on_startup()
+            queue_ui_ready = await self.setup_queue_on_startup()
             await self.load_persistent_leaderboards()
-            self.setup_done = True
+            if queue_ui_ready:
+                self.setup_done = True
+        elif not self.queue_channel_id:
+            print("⚠️ QUEUE_CHANNEL_ID is missing or invalid, skipping startup queue UI setup")
+
+    async def _resolve_channel(self, channel_id: int):
+        """Resolve a channel from cache first, then API fetch as fallback."""
+        channel = self.bot.get_channel(channel_id)
+        if channel:
+            return channel
+
+        try:
+            fetched = await self.bot.fetch_channel(channel_id)
+            return fetched
+        except Exception as e:
+            print(f"❌ Could not fetch channel {channel_id}: {e}")
+            return None
     
     async def setup_queue_on_startup(self):
         """Setup the queue UI automatically on bot startup"""
@@ -2001,10 +2018,14 @@ class SkrimmishCog(commands.Cog):
             await asyncio.sleep(1)
             
             # Get the channel
-            channel = self.bot.get_channel(self.queue_channel_id)
+            channel = await self._resolve_channel(self.queue_channel_id)
             if not channel:
                 print(f"❌ Queue channel {self.queue_channel_id} not found!")
-                return
+                return False
+
+            if not isinstance(channel, discord.TextChannel):
+                print(f"❌ Queue channel {self.queue_channel_id} is not a text channel")
+                return False
             
             # Get old message ID from database
             old_message_id = await db.get_config('queue_message_id')
@@ -2069,9 +2090,11 @@ class SkrimmishCog(commands.Cog):
                 print(f"⏰ Started inactivity timer for existing queue")
             
             print(f"✅ Queue UI setup in channel {channel.name} (ID: {self.queue_channel_id})")
+            return True
             
         except Exception as e:
             print(f"❌ Failed to setup queue on startup: {e}")
+            return False
     
     async def load_persistent_leaderboards(self):
         """Load all persistent leaderboards from database on bot startup"""
