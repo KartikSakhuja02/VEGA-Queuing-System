@@ -1958,10 +1958,25 @@ class SkrimmishCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         """Called when the bot is ready - setup queue UI automatically"""
-        if not self.setup_done and self.queue_channel_id:
+        if self.setup_done:
+            return
+
+        # Prefer env value, but fall back to persisted DB config from /setup_queue.
+        if not self.queue_channel_id:
+            db_channel_id = await db.get_config('queue_channel_id')
+            if db_channel_id:
+                try:
+                    self.queue_channel_id = int(db_channel_id)
+                except ValueError:
+                    print(f"⚠️ Invalid queue_channel_id in DB: {db_channel_id}")
+
+        if self.queue_channel_id:
             await self.setup_queue_on_startup()
-            await self.load_persistent_leaderboards()
-            self.setup_done = True
+        else:
+            print("ℹ️ Queue auto-setup skipped: set QUEUE_CHANNEL_ID in .env or run /setup_queue once.")
+
+        await self.load_persistent_leaderboards()
+        self.setup_done = True
     
     async def setup_queue_on_startup(self):
         """Setup the queue UI automatically on bot startup"""
