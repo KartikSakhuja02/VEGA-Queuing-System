@@ -1305,7 +1305,11 @@ class QueueButton(discord.ui.Button):
         queue = await db.get_queue()
         
         # Update the queue display
-        await self.view.update_queue_display(interaction)
+        await self.view.update_queue_display(
+            interaction,
+            activity_title="Player Joined Queue",
+            activity_user=interaction.user.mention,
+        )
         
         # Log to scrimmish logs channel
         logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
@@ -1371,7 +1375,11 @@ class QueueButton(discord.ui.Button):
             )
             
             # Update the queue display again (now empty)
-            await self.view.update_queue_display(interaction)
+            await self.view.update_queue_display(
+                interaction,
+                activity_title="Player Left Queue",
+                activity_user=interaction.user.mention,
+            )
             
             # Get the next match number
             match_number_str = await db.get_config('next_match_number')
@@ -1641,7 +1649,12 @@ class QueueView(discord.ui.View):
             timer_task.cancel()
             del queue_inactivity_timers[channel_id]
     
-    async def update_queue_display(self, interaction: discord.Interaction):
+    async def update_queue_display(
+        self,
+        interaction: discord.Interaction,
+        activity_title: Optional[str] = None,
+        activity_user: Optional[str] = None,
+    ):
         """Update the queue embed display"""
         queue = await db.get_queue()
         queue_count = len(queue)
@@ -1651,6 +1664,12 @@ class QueueView(discord.ui.View):
             title=BRAND_QUEUE_TITLE,
             color=0xED4245  # Discord red
         )
+
+        if activity_title:
+            activity_block = activity_title
+            if activity_user:
+                activity_block = f"{activity_block}\n{activity_user}"
+            embed.description = f"{activity_block}\n"
         
         # Build queue display with proper spacing
         queue_text = f"**Queue {queue_count}/2**\n\n"
