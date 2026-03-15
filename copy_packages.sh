@@ -1,107 +1,66 @@
 #!/bin/bash
-# Copy ALL packages from any working venv on this machine into this project's venv.
-# Run this script from ANYWHERE — it figures out all paths automatically.
-
-set -e
+# Copy packages from working venv to this project's venv
 
 echo "=================================================="
-echo "  VEGA Queue System — Venv Package Copier"
+echo "Copying packages from working venv..."
 echo "=================================================="
 echo ""
 
-# ── 1. Find THIS project's directory (the folder containing this script) ──
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_VENV="$SCRIPT_DIR/venv"
+SOURCE_VENV="/home/kartiksakhuja02/Documents/Valorant-Mobile-Tournament/venv"
+TARGET_VENV="/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv"
 
-echo "Project dir  : $SCRIPT_DIR"
-echo "Target venv  : $TARGET_VENV"
+echo "Source: $SOURCE_VENV"
+echo "Target: $TARGET_VENV"
 echo ""
 
-# ── 2. Create fresh venv if it doesn't exist yet ──
-if [ ! -f "$TARGET_VENV/bin/python" ]; then
-    echo "Creating new venv at $TARGET_VENV ..."
-    python3 -m venv "$TARGET_VENV"
-    echo "✅ Venv created"
-else
-    echo "✅ Venv already exists"
-fi
-echo ""
-
-# ── 3. Auto-discover a working source venv ──
-CANDIDATE_VENVS=(
-    "$HOME/Documents/Valorant-Mobile-India-Queue/venv"
-    "$HOME/Documents/Valorant-Mobile-Tournament/venv"
-    "$HOME/Documents/Valorant-Tournament/venv"
-    "$HOME/Documents/Valm-India-Queue/venv"
-    "$HOME/Documents/valmindiaqueue/venv"
-    "$HOME/venv"
-)
-
-SOURCE_VENV=""
-for CANDIDATE in "${CANDIDATE_VENVS[@]}"; do
-    if [ -d "$CANDIDATE/lib" ] && ls "$CANDIDATE/lib/python3."*/site-packages/discord 1>/dev/null 2>&1; then
-        SOURCE_VENV="$CANDIDATE"
-        break
-    fi
-done
-
-# Fallback: scan ~/Documents for any venv with discord installed
-if [ -z "$SOURCE_VENV" ]; then
-    while IFS= read -r cfg; do
-        DIR="$(dirname "$(dirname "$cfg")")"
-        if ls "$DIR/lib/python3."*/site-packages/discord 1>/dev/null 2>&1; then
-            SOURCE_VENV="$DIR"
-            break
-        fi
-    done < <(find "$HOME/Documents" -maxdepth 4 -name "pyvenv.cfg" 2>/dev/null)
-fi
-
-if [ -z "$SOURCE_VENV" ]; then
-    echo "❌  Could not find any venv with discord.py installed."
-    echo "   Run:  find ~/Documents -maxdepth 4 -name pyvenv.cfg"
-    echo "   Then re-run this script from that venv's parent directory."
-    exit 1
-fi
-
-echo "Source venv  : $SOURCE_VENV"
-echo ""
-
-# ── 4. Locate site-packages in both venvs ──
+# Find the Python version directory
 SOURCE_SITE=$(find "$SOURCE_VENV/lib" -type d -name "site-packages" | head -n 1)
 TARGET_SITE=$(find "$TARGET_VENV/lib" -type d -name "site-packages" | head -n 1)
 
 echo "Copying packages..."
 echo "From: $SOURCE_SITE"
-echo "To:   $TARGET_SITE"
+echo "To: $TARGET_SITE"
 echo ""
 
-# ── 5. Copy EVERYTHING from source site-packages ──
-# rsync preferred (preserves symlinks, skips identical files), cp as fallback
-if command -v rsync &>/dev/null; then
-    rsync -a --info=progress2 "$SOURCE_SITE/" "$TARGET_SITE/"
-else
-    cp -r "$SOURCE_SITE/." "$TARGET_SITE/"
-fi
+# List what we're about to copy
+echo "Packages found in source:"
+ls "$SOURCE_SITE" | grep -E "^(google|PIL|grpc|proto|pydantic|cryptography|tqdm|requests|urllib3|certifi|charset|idna|pyasn1|rsa|cachetools)" | head -20
+echo ""
+
+# Copy all necessary packages (show errors if any)
+echo "Copying google*..."
+cp -rv "$SOURCE_SITE"/google* "$TARGET_SITE/" 2>&1 | head -5
+
+echo "Copying PIL*..."
+cp -rv "$SOURCE_SITE"/PIL* "$TARGET_SITE/" 2>&1 | head -5
+
+echo "Copying other dependencies..."
+cp -r "$SOURCE_SITE"/grpc* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/proto* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/_proto* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/pydantic* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/cryptography* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/tqdm* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/requests* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/urllib3* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/certifi* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/charset* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/idna* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/pyasn1* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/rsa* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/cachetools* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/annotated* "$TARGET_SITE/" 2>&1
+cp -r "$SOURCE_SITE"/typing* "$TARGET_SITE/" 2>&1
 
 echo ""
 echo "=================================================="
 echo "✅ Packages copied successfully!"
 echo "=================================================="
 echo ""
-echo "Testing imports..."
-cd "$SCRIPT_DIR"
+echo "Now testing imports..."
+cd /home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue
 source venv/bin/activate
-if python -c "import discord, asyncpg, dotenv, google.generativeai, PIL; print('✅ All imports working!')" 2>&1; then
-    echo ""
-    echo "=================================================="
-    echo " Bot is ready! To start the service run:"
-    echo "   sudo systemctl restart vega-queue.service"
-    echo " Or test manually first:"
-    echo "   source venv/bin/activate && python bot.py"
-    echo "=================================================="
-else
-    echo ""
-    echo "Some imports failed — run:  pip list | grep -i <package>"
-    echo "then install any missing ones manually."
-fi
+python3 -c "import google.generativeai; import PIL; print('✅ All imports working!')"
 
+echo ""
+echo "You can now start the bot!"

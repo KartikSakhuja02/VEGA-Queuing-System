@@ -7,7 +7,7 @@ echo "=================================================="
 echo ""
 
 SOURCE="/home/kartiksakhuja02/.local/lib/python3.13/site-packages"
-TARGET="/home/kartiksakhuja02/Documents/VEGA-Queue-System/venv/lib/python3.13/site-packages"
+TARGET="/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv/lib/python3.13/site-packages"
 
 echo "Source: $SOURCE"
 echo "Target: $TARGET"
@@ -42,7 +42,7 @@ echo "✅ Packages copied!"
 echo "=================================================="
 echo ""
 
-cd /home/kartiksakhuja02/Documents/VEGA-Queue-System
+cd /home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue
 source venv/bin/activate
 
 echo "Testing imports..."
@@ -50,11 +50,10 @@ if python3 -c "import google.generativeai; import PIL; print('✅ All working!')
     echo ""
     echo "=================================================="
     echo "SUCCESS! Start your bot:"
-    echo "sudo systemctl restart vega-queue"
+    echo "sudo systemctl restart valmindiaqueue"
     echo "=================================================="
 else
     echo ""
     echo "Checking what's still missing..."
     python3 -c "import google.generativeai" 2>&1
 fi
-

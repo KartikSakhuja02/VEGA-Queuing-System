@@ -7,7 +7,6 @@ import asyncio
 import random
 from typing import Optional
 from datetime import datetime
-from pathlib import Path
 import io
 import re
 import base64
@@ -51,34 +50,6 @@ MMR_RANKS = [
     (1750, 1900, 'IMMORTAL_ROLE_ID', 'Immortal'),
     (1900, 2200, 'RADIANT_ROLE_ID', 'Radiant'),
 ]
-
-BRAND_BANNER_FILENAME = 'vega_banner.jpg'
-BRAND_LOGO_FILENAME = 'vega_logo.jpeg'
-GFX_DIR = Path(__file__).resolve().parent.parent / 'GFX'
-
-
-def _find_gfx_asset(candidates: list[str]) -> Optional[Path]:
-    """Return the first existing asset path from GFX."""
-    for name in candidates:
-        candidate = GFX_DIR / name
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def build_branding_files() -> list[discord.File]:
-    """Create fresh Discord file objects for brand banner/logo attachments."""
-    files: list[discord.File] = []
-
-    banner = _find_gfx_asset(['Vega Banner.jpg', 'vega_banner.jpg', 'banner.jpg'])
-    if banner:
-        files.append(discord.File(str(banner), filename=BRAND_BANNER_FILENAME))
-
-    logo = _find_gfx_asset(['Vega Logo.jpg', 'vega_logo.jpeg', 'vega_logo.jpg', 'logo.jpeg'])
-    if logo:
-        files.append(discord.File(str(logo), filename=BRAND_LOGO_FILENAME))
-
-    return files
 
 def get_rank_role_id(mmr: int) -> tuple[int | None, str]:
     """Get the appropriate rank role ID based on MMR
@@ -371,7 +342,7 @@ class SubmitSSView(discord.ui.View):
             img_byte_arr = img_byte_arr.getvalue()
             image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
             
-            prompt = """Analyze this Valorant match scoreboard screenshot and extract the player information.
+            prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the player information.
 
 The scoreboard has TWO players:
 - TOP player: Has a YELLOW/GREEN/GOLD colored background (displayed at the top)
@@ -1599,7 +1570,7 @@ class QueueView(discord.ui.View):
                 channel = guild.get_channel(channel_id)
                 if channel and self.message:
                     embed = discord.Embed(
-                        title="VEGA ASSASSINS MATCHMAKING Queue",
+                        title="Valorant Mobile India Matchmaking Queue",
                         description="Emptying queue due to 60 minutes of inactivity\nRe-enter the queue if you are still looking to play!",
                         color=0x2B2D31  # Dark gray
                     )
@@ -1608,8 +1579,7 @@ class QueueView(discord.ui.View):
                         value="**Queue 0/2**\n\n",
                         inline=False
                     )
-                    embed.set_image(url=f"attachment://{BRAND_BANNER_FILENAME}")
-                    embed.set_thumbnail(url=f"attachment://{BRAND_LOGO_FILENAME}")
+                    embed.set_image(url="attachment://valm_india_banner.jpg")
                     embed.timestamp = discord.utils.utcnow()
                     
                     try:
@@ -1656,7 +1626,7 @@ class QueueView(discord.ui.View):
         
         # Create embed with clean NeatQueue style
         embed = discord.Embed(
-            title="VEGA ASSASSINS MATCHMAKING Queue",
+            title="VALM INDIA MATCHMAKING Queue",
             color=0xED4245  # Discord red
         )
         
@@ -1676,8 +1646,7 @@ class QueueView(discord.ui.View):
         )
         
         # Set the banner image
-        embed.set_image(url=f"attachment://{BRAND_BANNER_FILENAME}")
-        embed.set_thumbnail(url=f"attachment://{BRAND_LOGO_FILENAME}")
+        embed.set_image(url="attachment://valm_india_banner.jpg")
         
         # Add timestamp at bottom
         embed.timestamp = discord.utils.utcnow()
@@ -1901,7 +1870,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
     """Build the leaderboard embed - FSN style with rank change arrows"""
     if not players:
         embed = discord.Embed(
-            title="VEGA Assassins Leaderboard",
+            title="VALM India Leaderboard",
             description="No registered players found!",
             color=0x2B2D31
         )
@@ -1910,7 +1879,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         return embed
     
     embed = discord.Embed(
-        title="VEGA Assassins Leaderboard",
+        title="VALM India Leaderboard",
         color=0x2B2D31,
         description=""
     )
@@ -1983,33 +1952,16 @@ class SkrimmishCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.queue_view = QueueView(bot)
-        queue_channel_raw = os.getenv('QUEUE_CHANNEL_ID', '').strip()
-        self.queue_channel_id = int(queue_channel_raw) if queue_channel_raw.isdigit() else 0
+        self.queue_channel_id = int(os.getenv('QUEUE_CHANNEL_ID', 0))
         self.setup_done = False
     
     @commands.Cog.listener()
     async def on_ready(self):
         """Called when the bot is ready - setup queue UI automatically"""
         if not self.setup_done and self.queue_channel_id:
-            queue_ui_ready = await self.setup_queue_on_startup()
+            await self.setup_queue_on_startup()
             await self.load_persistent_leaderboards()
-            if queue_ui_ready:
-                self.setup_done = True
-        elif not self.queue_channel_id:
-            print("⚠️ QUEUE_CHANNEL_ID is missing or invalid, skipping startup queue UI setup")
-
-    async def _resolve_channel(self, channel_id: int):
-        """Resolve a channel from cache first, then API fetch as fallback."""
-        channel = self.bot.get_channel(channel_id)
-        if channel:
-            return channel
-
-        try:
-            fetched = await self.bot.fetch_channel(channel_id)
-            return fetched
-        except Exception as e:
-            print(f"❌ Could not fetch channel {channel_id}: {e}")
-            return None
+            self.setup_done = True
     
     async def setup_queue_on_startup(self):
         """Setup the queue UI automatically on bot startup"""
@@ -2018,14 +1970,10 @@ class SkrimmishCog(commands.Cog):
             await asyncio.sleep(1)
             
             # Get the channel
-            channel = await self._resolve_channel(self.queue_channel_id)
+            channel = self.bot.get_channel(self.queue_channel_id)
             if not channel:
                 print(f"❌ Queue channel {self.queue_channel_id} not found!")
-                return False
-
-            if not isinstance(channel, discord.TextChannel):
-                print(f"❌ Queue channel {self.queue_channel_id} is not a text channel")
-                return False
+                return
             
             # Get old message ID from database
             old_message_id = await db.get_config('queue_message_id')
@@ -2045,7 +1993,7 @@ class SkrimmishCog(commands.Cog):
             
             # Create the queue embed with NeatQueue style
             embed = discord.Embed(
-                title="VEGA ASSASSINS MATCHMAKING Queue",
+                title="VALM INDIA MATCHMAKING Queue",
                 color=0xED4245  # Discord red
             )
             
@@ -2065,19 +2013,17 @@ class SkrimmishCog(commands.Cog):
             )
             
             # Set the banner image
-            embed.set_image(url=f"attachment://{BRAND_BANNER_FILENAME}")
-            embed.set_thumbnail(url=f"attachment://{BRAND_LOGO_FILENAME}")
+            embed.set_image(url="attachment://valm_india_banner.jpg")
             
             # Add timestamp
             embed.timestamp = discord.utils.utcnow()
             
-            branding_files = build_branding_files()
-
-            # Send the new queue message with brand assets when available
-            if branding_files:
-                message = await channel.send(files=branding_files, embed=embed, view=self.queue_view)
-            else:
-                message = await channel.send(embed=embed, view=self.queue_view)
+            # Load the banner image
+            banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
+            banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
+            
+            # Send the new message with the banner
+            message = await channel.send(file=banner_file, embed=embed, view=self.queue_view)
             self.queue_view.message = message
             
             # Store the new message ID in database
@@ -2090,11 +2036,9 @@ class SkrimmishCog(commands.Cog):
                 print(f"⏰ Started inactivity timer for existing queue")
             
             print(f"✅ Queue UI setup in channel {channel.name} (ID: {self.queue_channel_id})")
-            return True
             
         except Exception as e:
             print(f"❌ Failed to setup queue on startup: {e}")
-            return False
     
     async def load_persistent_leaderboards(self):
         """Load all persistent leaderboards from database on bot startup"""
@@ -2188,7 +2132,7 @@ class SkrimmishCog(commands.Cog):
         
         # Create the queue embed with NeatQueue style
         embed = discord.Embed(
-            title="VEGA ASSASSINS MATCHMAKING Queue",
+            title="VALM INDIA MATCHMAKING Queue",
             color=0xED4245  # Discord red
         )
         
@@ -2208,26 +2152,21 @@ class SkrimmishCog(commands.Cog):
         )
         
         # Set the banner image
-        embed.set_image(url=f"attachment://{BRAND_BANNER_FILENAME}")
-        embed.set_thumbnail(url=f"attachment://{BRAND_LOGO_FILENAME}")
+        embed.set_image(url="attachment://valm_india_banner.jpg")
         
         # Add timestamp
         embed.timestamp = discord.utils.utcnow()
         
-        branding_files = build_branding_files()
+        # Load the banner image
+        banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
+        banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
         
-        # Send the message with buttons and branding assets
-        if branding_files:
-            await interaction.response.send_message(
-                files=branding_files,
-                embed=embed,
-                view=self.queue_view
-            )
-        else:
-            await interaction.response.send_message(
-                embed=embed,
-                view=self.queue_view
-            )
+        # Send the message with buttons and banner
+        await interaction.response.send_message(
+            file=banner_file,
+            embed=embed,
+            view=self.queue_view
+        )
         
         # Store the message reference
         message = await interaction.original_response()
@@ -2291,7 +2230,7 @@ class SkrimmishCog(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @app_commands.command(name="ign", description="Register your in-game name")
-    @app_commands.describe(player_ign="Your in-game name")
+    @app_commands.describe(player_ign="Your Valorant Mobile in-game name")
     async def register_ign(self, interaction: discord.Interaction, player_ign: str):
         """Register or update player's in-game name"""
         user_id = interaction.user.id
@@ -2380,7 +2319,7 @@ class SkrimmishCog(commands.Cog):
                 ephemeral=True
             )
     
-    @app_commands.command(name="test-ocr", description="Test OCR on a Valorant scoreboard screenshot")
+    @app_commands.command(name="test-ocr", description="Test OCR on a Valorant Mobile scoreboard screenshot")
     async def test_ocr(self, interaction: discord.Interaction):
         """Test OCR functionality on a screenshot without updating stats"""
         if not OCR_AVAILABLE:
@@ -2393,7 +2332,7 @@ class SkrimmishCog(commands.Cog):
             return
         
         await interaction.response.send_message(
-            "📸 **Upload a Valorant scoreboard screenshot**\n\n"
+            "📸 **Upload a Valorant Mobile scoreboard screenshot**\n\n"
             "You have **2 minutes** to upload the screenshot.\n"
             "I'll analyze it and show you what data I can extract.",
             ephemeral=True
@@ -2435,7 +2374,7 @@ class SkrimmishCog(commands.Cog):
                 image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
                 
                 # Use Gemini API
-                prompt = """Analyze this Valorant match scoreboard screenshot and extract the player information.
+                prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the player information.
 
 The scoreboard has TWO players:
 - TOP player: Has a YELLOW/GREEN/GOLD colored background (displayed at the top)
@@ -2641,7 +2580,7 @@ BOTTOM_SCORE: 8"""
                 img_byte_arr = img_byte_arr.getvalue()
                 image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
                 
-                prompt = """Analyze this Valorant match scoreboard screenshot and extract the player information.
+                prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the player information.
 
 The scoreboard has TWO players:
 - TOP player: Has a YELLOW/GREEN/GOLD colored background (displayed at the top)
@@ -3432,4 +3371,3 @@ BOTTOM_SCORE: 8"""
 
 async def setup(bot):
     await bot.add_cog(SkrimmishCog(bot))
-

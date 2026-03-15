@@ -20,7 +20,7 @@ free -h
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 # Now try installing again
-cd ~/Documents/VEGA-Queue-System
+cd ~/Documents/Valorant-Mobile-India-Queue
 source venv/bin/activate
 pip install --no-cache-dir google-generativeai==0.8.0
 pip install --no-cache-dir Pillow==10.2.0
@@ -28,7 +28,7 @@ pip install --no-cache-dir Pillow==10.2.0
 
 ### Option 2: Use Quick Install Script
 ```bash
-cd ~/Documents/VEGA-Queue-System
+cd ~/Documents/Valorant-Mobile-India-Queue
 git pull
 source venv/bin/activate
 chmod +x quick_install.sh
@@ -55,13 +55,13 @@ pip install --no-cache-dir google-generativeai==0.8.0
 ### Check what's wrong:
 ```bash
 # Stop the service
-sudo systemctl stop vega-queue
+sudo systemctl stop valmindiaqueue
 
 # Check for errors
-sudo journalctl -u vega-queue -n 50
+sudo journalctl -u valmindiaqueue -n 50
 
 # Try running manually to see errors
-cd ~/Documents/VEGA-Queue-System
+cd ~/Documents/Valorant-Mobile-India-Queue
 source venv/bin/activate
 python bot.py
 # Press Ctrl+C to stop
@@ -87,18 +87,17 @@ kill -9 XXXX
 sudo pkill -9 python
 
 # Now restart service
-sudo systemctl restart vega-queue
+sudo systemctl restart valmindiaqueue
 ```
 
 ### Quick Status Check:
 ```bash
 # Check service status
-sudo systemctl status vega-queue
+sudo systemctl status valmindiaqueue
 
 # Check real-time logs
-sudo journalctl -u vega-queue -f
+sudo journalctl -u valmindiaqueue -f
 
 # Check if bot is actually running
 ps aux | grep bot.py
 ```
-

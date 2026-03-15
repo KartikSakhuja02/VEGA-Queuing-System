@@ -2,7 +2,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
-import traceback
 from dotenv import load_dotenv
 import time
 import asyncio
@@ -20,27 +19,27 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-class VegaAssassinsBot(commands.Bot):
+class VALMBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
         self.start_time = time.time()
     
     async def setup_hook(self):
         """This is called when the bot starts up"""
-        # Connect to database (failure is non-fatal — cogs still load)
+        # Connect to database
         try:
             await db.connect()
             await db.initialize_schema()
-            print("✅ Database connected and schema initialised")
         except Exception as e:
-            tb = ''.join(traceback.format_exc())
-            print(f"❌ Database connection failed — bot will start without DB:\n{tb}")
+            print(f"❌ Database connection failed: {e}")
+            print("Make sure PostgreSQL is running and DATABASE_URL is correct in .env")
+            return
         
-        # Load cogs (always, even if DB is down)
+        # Load cogs
         await self.load_cogs()
         
-        # Sync slash commands to the guild immediately (guild sync is instant;
-        # global sync can take up to 1 hour so we always prefer guild sync)
+        # Sync commands globally (can take up to 1 hour)
+        # For faster testing, sync to a specific guild using guild=discord.Object(id=GUILD_ID)
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
             self.tree.copy_global_to(guild=guild)
@@ -48,7 +47,7 @@ class VegaAssassinsBot(commands.Bot):
             print(f"✅ Commands synced to guild {GUILD_ID}")
         else:
             await self.tree.sync()
-            print("✅ Commands synced globally (may take up to 1 hour to propagate)")
+            print("✅ Commands synced globally")
     
     async def load_cogs(self):
         """Load all cogs from the cogs directory"""
@@ -72,7 +71,7 @@ class VegaAssassinsBot(commands.Bot):
         await super().close()
 
 # Initialize bot
-bot = VegaAssassinsBot()
+bot = VALMBot()
 
 # Error handler
 @bot.tree.error
@@ -82,17 +81,8 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     elif isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("You don't have permission to use this command!", ephemeral=True)
     else:
-        # Log the full traceback so it appears in journalctl
-        tb = ''.join(traceback.format_exception(type(error), error, error.__traceback__))
-        print(f"Unhandled command error in /{interaction.command.name if interaction.command else '?'}:\n{tb}")
-        msg = f"An error occurred: `{error}`"
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(msg, ephemeral=True)
-            else:
-                await interaction.followup.send(msg, ephemeral=True)
-        except Exception:
-            pass
+        print(f"Error: {error}")
+        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
 
 # Run the bot
 if __name__ == "__main__":
@@ -100,5 +90,3 @@ if __name__ == "__main__":
         print("Error: DISCORD_BOT_TOKEN not found in .env file!")
     else:
         bot.run(TOKEN)
-
-

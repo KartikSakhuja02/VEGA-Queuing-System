@@ -1,12 +1,8 @@
 #!/bin/bash
 # Installation script for Raspberry Pi dependencies
 
-set -euo pipefail
-
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 echo "=================================================="
-echo "VEGA Queue - Dependency Installer"
+echo "VALM India Queue - Dependency Installer"
 echo "=================================================="
 echo ""
 
@@ -39,12 +35,7 @@ sudo apt install -y libpng-dev || {
 
 echo ""
 echo "Step 2: Upgrading pip..."
-if [ -d "${PROJECT_DIR}/venv" ]; then
-    # shellcheck disable=SC1091
-    source "${PROJECT_DIR}/venv/bin/activate"
-fi
-
-python -m pip install --upgrade pip
+pip install --upgrade pip
 
 echo ""
 echo "Step 3: Installing Python packages..."
@@ -62,7 +53,7 @@ packages=(
 for package in "${packages[@]}"; do
     echo ""
     echo "Installing $package..."
-    python -m pip install "$package" --no-cache-dir || {
+    pip install "$package" --no-cache-dir || {
         echo "Failed to install $package"
         exit 1
     }
@@ -76,5 +67,5 @@ echo ""
 echo "Next steps:"
 echo "1. Configure your .env file with API keys"
 echo "2. Run: python bot.py (to test)"
-echo "3. Run: sudo systemctl restart vega-queue (if using systemd)"
+echo "3. Run: sudo systemctl restart valmindiaqueue (if using systemd)"
 echo ""

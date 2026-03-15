@@ -1,4 +1,4 @@
-# VEGA Queue Bot
+# VALM India Queue Bot
 
 A Discord bot for managing Valorant matchmaking queues for the Indian community.
 
@@ -38,8 +38,8 @@ A Discord bot for managing Valorant matchmaking queues for the Indian community.
 
 ```bash
 # Clone the repository (after initial push)
-git clone https://github.com/yourusername/VEGA-Queue-System.git
-cd VEGA-Queue-System
+git clone https://github.com/yourusername/VALM-India-Queue.git
+cd VALM-India-Queue
 
 # Create virtual environment
 python -m venv venv
@@ -80,8 +80,8 @@ sudo apt install libjpeg-dev zlib1g-dev libpng-dev -y
 cd ~
 
 # Clone the repository
-git clone https://github.com/yourusername/VEGA-Queue-System.git
-cd VEGA-Queue-System
+git clone https://github.com/yourusername/VALM-India-Queue.git
+cd VALM-India-Queue
 
 # Create virtual environment
 python3 -m venv venv
@@ -115,10 +115,10 @@ python bot.py
 
 ```bash
 # Copy the service file to systemd directory
-sudo cp vega-queue.service /etc/systemd/system/
+sudo cp valmindiaqueue.service /etc/systemd/system/
 
 # If your username is not 'pi', edit the service file
-sudo nano /etc/systemd/system/vega-queue.service
+sudo nano /etc/systemd/system/valmindiaqueue.service
 # Change 'User=pi' to your username
 # Change all paths from /home/pi/ to your home directory
 
@@ -126,35 +126,35 @@ sudo nano /etc/systemd/system/vega-queue.service
 sudo systemctl daemon-reload
 
 # Enable the service to start on boot
-sudo systemctl enable vega-queue
+sudo systemctl enable valmindiaqueue
 
 # Start the service
-sudo systemctl start vega-queue
+sudo systemctl start valmindiaqueue
 
 # Check status
-sudo systemctl status vega-queue
+sudo systemctl status valmindiaqueue
 ```
 
 #### Managing the Service
 
 ```bash
 # Start the bot
-sudo systemctl start vega-queue
+sudo systemctl start valmindiaqueue
 
 # Stop the bot
-sudo systemctl stop vega-queue
+sudo systemctl stop valmindiaqueue
 
 # Restart the bot
-sudo systemctl restart vega-queue
+sudo systemctl restart valmindiaqueue
 
 # Check status
-sudo systemctl status vega-queue
+sudo systemctl status valmindiaqueue
 
 # View logs
-tail -f ~/VEGA-Queue-System/logs/bot.log
+tail -f ~/VALM-India-Queue/logs/bot.log
 
 # View error logs
-tail -f ~/VEGA-Queue-System/logs/bot.error.log
+tail -f ~/VALM-India-Queue/logs/bot.error.log
 ```
 
 ### 4. Workflow: Laptop → Raspberry Pi
@@ -175,7 +175,7 @@ git push origin main
 
 ```bash
 # Navigate to the project directory
-cd ~/VEGA-Queue-System
+cd ~/VALM-India-Queue
 
 # Pull the latest changes
 git pull origin main
@@ -199,22 +199,22 @@ pip install Pillow>=10.0.0
 # pip install -r requirements.txt
 
 # Restart the bot service
-sudo systemctl restart vega-queue
+sudo systemctl restart valmindiaqueue
 
 # Check if it's running properly
-sudo systemctl status vega-queue
+sudo systemctl status valmindiaqueue
 ```
 
 ## Project Structure
 
 ```
-VEGA-Queue-System/
+VALM-India-Queue/
 ├── bot.py                    # Main bot file
 ├── requirements.txt          # Python dependencies
 ├── .env                      # Environment variables (not in git)
 ├── .env.example             # Example environment file
 ├── .gitignore               # Git ignore file
-├── vega-queue.service   # Systemd service file
+├── valmindiaqueue.service   # Systemd service file
 ├── README.md                # This file
 └── logs/                    # Log files (created automatically)
     ├── bot.log
@@ -285,14 +285,14 @@ Get verified**: Click the ✅ "Get Verified" button in the verification channel
 
 ### Service won't start on Raspberry Pi
 
-1. Check logs: `sudo journalctl -u vega-queue -n 50`
+1. Check logs: `sudo journalctl -u valmindiaqueue -n 50`
 2. Verify paths in the service file match your setup
 3. Ensure the virtual environment exists and has all dependencies installed
 4. Check that `.env` file exists and has the correct token
 
 ### Bot keeps restarting
 
-1. Check error logs: `tail -f ~/VEGA-Queue-System/logs/bot.error.log`
+1. Check error logs: `tail -f ~/VALM-India-Queue/logs/bot.error.log`
 2. Verify your Discord bot token is correct
 3. Check internet connection on Raspberry Pi
 
@@ -363,6 +363,5 @@ Feel free to submit issues and pull requests!
 ## License
 
 MIT License
-
-
-
+#   V E G A - Q U E U E  
+ 

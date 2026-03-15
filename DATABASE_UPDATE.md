@@ -8,10 +8,10 @@ This guide will help you update your PostgreSQL database on the Raspberry Pi to 
 
 1. **Connect to PostgreSQL with valmbot user**:
    ```bash
-   psql -U valmbot -d vegaassassinsqueue -h localhost
+   psql -U valmbot -d valmindiaqueue -h localhost
    ```
    
-   When prompted, enter the password: `vegaassassins`
+   When prompted, enter the password: `valorantmobileindia`
 
 2. **Create the player_profiles table**:
    ```sql
@@ -52,12 +52,12 @@ This guide will help you update your PostgreSQL database on the Raspberry Pi to 
 
 1. **Navigate to your bot directory**:
    ```bash
-   cd ~/VEGA-Queue-System
+   cd ~/Documents/Valorant-Mobile-India-Queue
    ```
 
 2. **Run the updated schema**:
    ```bash
-   PGPASSWORD=your_secure_password_here psql -U valmbot -d vegaassassinsqueue -h localhost < schema.sql
+   PGPASSWORD=valorantmobileindia psql -U valmbot -d valmindiaqueue -h localhost < schema.sql
    ```
 
    This will create any missing tables without affecting existing data.
@@ -68,12 +68,12 @@ The bot will automatically create the `player_profiles` table when it starts up,
 
 1. **Just restart the bot**:
    ```bash
-   sudo systemctl restart vega-queue
+   sudo systemctl restart valmindiaqueue
    ```
 
 2. **Check the logs to confirm**:
    ```bash
-   sudo journalctl -u vega-queue -n 50 -f
+   sudo journalctl -u valmindiaqueue -n 50 -f
    ```
 
    You should see: `✅ Database schema initialized`
@@ -82,7 +82,7 @@ The bot will automatically create the `player_profiles` table when it starts up,
 
 1. **Check bot status**:
    ```bash
-   sudo systemctl status vega-queue
+   sudo systemctl status valmindiaqueue
    ```
 
 2. **Try the /ign command in Discord**:
@@ -92,9 +92,9 @@ The bot will automatically create the `player_profiles` table when it starts up,
 
 3. **Verify registration in database** (optional):
    ```bash
-   psql -U valmbot -d vegaassassinsqueue -h localhost
+   psql -U valmbot -d valmindiaqueue -h localhost
    ```
-   Enter password: `vegaassassins`
+   Enter password: `valorantmobileindia`
    ```sql
    SELECT * FROM player_profiles;
    \q
@@ -105,7 +105,7 @@ The bot will automatically create the `player_profiles` table when it starts up,
 The `player_profiles` table stores:
 - **user_id**: Discord user ID (primary key)
 - **discord_username**: Discord username
-- **player_ign**: In-game name
+- **player_ign**: Valorant Mobile in-game name
 - **mmr**: Matchmaking rating (starts at 0)
 - **wins**: Total wins (starts at 0)
 - **losses**: Total losses (starts at 0)
@@ -123,16 +123,14 @@ The `player_profiles` table stores:
 This is fine - it means the table already exists. No action needed.
 
 ### Error: "permission denied"
-Make sure you're using the `valmbot` user with the correct password.
+Make sure you're using the `valmbot` user with the correct password: `valorantmobileindia`
 
 ### Bot not starting
-1. Check logs: `sudo journalctl -u vega-queue -n 50`
+1. Check logs: `sudo journalctl -u valmindiaqueue -n 50`
 2. Check database connection: Verify `DATABASE_URL` in `.env`
 3. Restart PostgreSQL: `sudo systemctl restart postgresql`
 
 ### Can't connect to database
 1. Check PostgreSQL is running: `sudo systemctl status postgresql`
-2. Verify database exists: `psql -U valmbot -h localhost -l | grep vegaassassinsqueue`
-3. Test connection: `psql -U valmbot -d vegaassassinsqueue -h localhost`
-
-
+2. Verify database exists: `psql -U valmbot -h localhost -l | grep valmindiaqueue`
+3. Test connection: `psql -U valmbot -d valmindiaqueue -h localhost` (password: `valorantmobileindia`)

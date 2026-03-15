@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Add venv to path
-sys.path.insert(0, '/home/kartiksakhuja02/Documents/VEGA-Queue-System/venv/lib/python3.13/site-packages')
+sys.path.insert(0, '/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv/lib/python3.13/site-packages')
 
 try:
     import google.generativeai as genai
@@ -49,4 +49,3 @@ except Exception as e:
     print(f"Error: {e}")
     import traceback
     traceback.print_exc()
-

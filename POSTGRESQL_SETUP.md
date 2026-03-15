@@ -26,10 +26,10 @@ sudo systemctl enable postgresql
 sudo -u postgres psql
 
 # Inside PostgreSQL prompt, create database and user:
-CREATE DATABASE vegaassassinsqueue;
+CREATE DATABASE valmindiaqueue;
 CREATE USER valmbot WITH PASSWORD 'your_secure_password_here';
-GRANT ALL PRIVILEGES ON DATABASE vegaassassinsqueue TO valmbot;
-\c vegaassassinsqueue
+GRANT ALL PRIVILEGES ON DATABASE valmindiaqueue TO valmbot;
+\c valmindiaqueue
 GRANT ALL ON SCHEMA public TO valmbot;
 \q
 
@@ -41,7 +41,7 @@ exit
 
 ```bash
 # Test connection with the new user
-psql -U valmbot -d vegaassassinsqueue -h localhost
+psql -U valmbot -d valmindiaqueue -h localhost
 
 # Inside psql:
 \dt  # List tables (will be empty initially)
@@ -84,8 +84,7 @@ sudo systemctl restart postgresql
 Add to your `.env` file:
 
 ```
-DATABASE_URL=postgresql://valmbot:your_secure_password_here@localhost/vegaassassinsqueue
-DB_SCHEMA=vega_assassins_matchmaking
+DATABASE_URL=postgresql://valmbot:your_secure_password_here@localhost/valmindiaqueue
 ```
 
 Replace `your_secure_password_here` with the password you set above.
@@ -99,6 +98,3 @@ sudo netstat -plunt | grep postgres
 # Or use ss:
 sudo ss -plunt | grep postgres
 ```
-
-
-
