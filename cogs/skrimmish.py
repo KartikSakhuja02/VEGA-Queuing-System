@@ -1943,9 +1943,9 @@ async def update_all_leaderboards():
             await db.delete_leaderboard(channel_id)
         except Exception as e:
             print(f"Error updating leaderboard in channel {channel_id}: {e}")
-            # Remove broken leaderboard from memory and database
-            del active_leaderboards[channel_id]
-            await db.delete_leaderboard(channel_id)
+            # Keep tracked leaderboard on transient failures (network/rate limits/etc.).
+            # It will be retried on next refresh/update.
+            continue
 
 class SkrimmishCog(commands.Cog):
     """Cog for managing 1v1 skrimmish matches"""
@@ -2088,9 +2088,12 @@ class SkrimmishCog(commands.Cog):
                     # Get the channel
                     channel = self.bot.get_channel(channel_id)
                     if not channel:
-                        print(f"⚠️ Leaderboard channel {channel_id} not found, removing from database")
-                        await db.delete_leaderboard(channel_id)
-                        continue
+                        try:
+                            channel = await self.bot.fetch_channel(channel_id)
+                            print(f"ℹ️ Leaderboard channel {channel_id} loaded via API fetch")
+                        except Exception as e:
+                            print(f"⚠️ Leaderboard channel {channel_id} not accessible: {e}")
+                            continue
                     
                     # Fetch the message
                     try:
@@ -2124,7 +2127,7 @@ class SkrimmishCog(commands.Cog):
                     
                 except Exception as e:
                     print(f"❌ Error loading leaderboard for channel {channel_id}: {e}")
-                    await db.delete_leaderboard(channel_id)
+                    continue
             
             if loaded_count > 0:
                 print(f"✅ Successfully loaded {loaded_count} persistent leaderboard(s)")
@@ -2289,6 +2292,10 @@ class SkrimmishCog(commands.Cog):
             if interaction.guild and profile:
                 await update_player_rank_role(interaction.guild, user_id, profile['mmr'])
             
+            # Ensure persistent leaderboard messages are loaded before refresh.
+            if not active_leaderboards:
+                await self.load_persistent_leaderboards()
+
             # Update all active leaderboards to show new player
             await update_all_leaderboards()
         else:
@@ -2338,6 +2345,10 @@ class SkrimmishCog(commands.Cog):
             if interaction.guild and profile:
                 await update_player_rank_role(interaction.guild, user_id, profile['mmr'])
             
+            # Ensure persistent leaderboard messages are loaded before refresh.
+            if not active_leaderboards:
+                await self.load_persistent_leaderboards()
+
             # Update all active leaderboards to show new/updated player
             await update_all_leaderboards()
         else:
