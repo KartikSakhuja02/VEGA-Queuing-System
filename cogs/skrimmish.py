@@ -318,9 +318,9 @@ class SubmitSSButton(discord.ui.Button):
             
         except asyncio.TimeoutError:
             match_data['processing_ss'] = False
-            await interaction.followup.send(
-                "⏰ **Timeout!** You didn't upload a screenshot in 3 minutes.\n\nPlease click the **Submit Screenshot** button again to try.",
-                ephemeral=True
+            await self.view.send_retry_submission_ui(
+                interaction.channel,
+                "⏰ Submission timed out. No screenshot was uploaded in 3 minutes."
             )
 
 class SubmitSSView(discord.ui.View):
@@ -331,6 +331,21 @@ class SubmitSSView(discord.ui.View):
         self.bot = bot
         self.message: Optional[discord.Message] = None
         self.add_item(SubmitSSButton())
+
+    async def send_retry_submission_ui(self, channel, reason: str):
+        """Post a fresh retry UI for result submission."""
+        retry_embed = discord.Embed(
+            title="Retry Result Submission",
+            description=(
+                f"{reason}\n\n"
+                "Click **Submit Screenshot** below to retry result submission."
+            ),
+            color=0xED4245
+        )
+
+        retry_view = SubmitSSView(self.match_id, self.bot)
+        retry_message = await channel.send(embed=retry_embed, view=retry_view)
+        retry_view.message = retry_message
     
     async def process_screenshot(self, attachment, channel):
         """Process the uploaded screenshot using Gemini OCR"""
@@ -486,6 +501,11 @@ BOTTOM_SCORE: 8"""
                 
                 await channel.send(error_msg)
                 await processing_msg.delete()
+                match_data['processing_ss'] = False
+                await self.send_retry_submission_ui(
+                    channel,
+                    "⚠️ OCR could not map the screenshot to valid registered match players."
+                )
                 # Don't continue with match completion
                 return
             
@@ -648,6 +668,10 @@ BOTTOM_SCORE: 8"""
                 color=0xFF0000
             )
             await channel.send(embed=error_embed)
+            await self.send_retry_submission_ui(
+                channel,
+                "⚠️ Screenshot processing failed."
+            )
 
 class CancelButton(discord.ui.Button):
     """Button for voting on match cancellation"""
