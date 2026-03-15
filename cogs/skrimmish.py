@@ -2283,10 +2283,11 @@ class SkrimmishCog(commands.Cog):
                 embed.add_field(name="Starting Stats", value="MMR: 700\nGames: 0\nWins: 0\nLosses: 0", inline=False)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
-            
-            # Assign initial rank role for new players (starting MMR is 700 = Iron)
-            if not is_registered:
-                await update_player_rank_role(interaction.guild, user_id, 700)
+
+            # Sync rank role with the player's actual MMR in database.
+            profile = await db.get_player_profile(user_id)
+            if interaction.guild and profile:
+                await update_player_rank_role(interaction.guild, user_id, profile['mmr'])
             
             # Update all active leaderboards to show new player
             await update_all_leaderboards()
@@ -2331,10 +2332,11 @@ class SkrimmishCog(commands.Cog):
                 embed.add_field(name="Starting Stats", value="MMR: 700\nGames: 0\nWins: 0\nLosses: 0", inline=False)
             
             await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            # Assign initial rank role for new players (starting MMR is 700 = Iron)
-            if not is_registered:
-                await update_player_rank_role(interaction.guild, user_id, 700)
+
+            # Sync rank role with the player's actual MMR in database.
+            profile = await db.get_player_profile(user_id)
+            if interaction.guild and profile:
+                await update_player_rank_role(interaction.guild, user_id, profile['mmr'])
             
             # Update all active leaderboards to show new/updated player
             await update_all_leaderboards()

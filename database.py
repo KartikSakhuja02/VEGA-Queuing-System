@@ -288,10 +288,21 @@ class Database:
                 )
                 return True, "Registration successful!"
             except asyncpg.UniqueViolationError:
-                # Player already registered, update IGN
+                # Player already registered, update IGN.
+                # Also repair legacy rows that still have 0 MMR and no match history.
                 await conn.execute(
                     '''UPDATE player_profiles 
-                       SET player_ign = $2, discord_username = $3, last_updated = CURRENT_TIMESTAMP
+                       SET player_ign = $2,
+                           discord_username = $3,
+                           mmr = CASE
+                               WHEN mmr <= 0 AND games = 0 AND wins = 0 AND losses = 0 THEN 700
+                               ELSE mmr
+                           END,
+                           peak_mmr = CASE
+                               WHEN peak_mmr <= 0 AND games = 0 AND wins = 0 AND losses = 0 THEN 700
+                               ELSE peak_mmr
+                           END,
+                           last_updated = CURRENT_TIMESTAMP
                        WHERE user_id = $1''',
                     user_id, player_ign, discord_username
                 )
