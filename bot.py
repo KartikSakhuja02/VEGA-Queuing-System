@@ -76,13 +76,23 @@ bot = VALMBot()
 # Error handler
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    async def send_error_message(message: str):
+        """Reply safely even if the interaction has already been acknowledged."""
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+
     if isinstance(error, app_commands.CommandOnCooldown):
-        await interaction.response.send_message(f"Command is on cooldown. Try again in {error.retry_after:.2f}s", ephemeral=True)
+        await send_error_message(f"Command is on cooldown. Try again in {error.retry_after:.2f}s")
     elif isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You don't have permission to use this command!", ephemeral=True)
+        await send_error_message("You don't have permission to use this command!")
+    elif isinstance(error, app_commands.CommandNotFound):
+        print(f"CommandNotFound: {error}")
+        await send_error_message("That command is outdated or not available right now. Please wait a moment and try again.")
     else:
         print(f"Error: {error}")
-        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
+        await send_error_message("An error occurred while processing the command.")
 
 # Run the bot
 if __name__ == "__main__":
