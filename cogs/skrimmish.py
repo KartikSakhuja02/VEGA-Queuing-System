@@ -11,6 +11,7 @@ import io
 import re
 import base64
 import aiohttp
+import traceback
 
 # Try to import OCR dependencies (optional)
 try:
@@ -1987,8 +1988,12 @@ class SkrimmishCog(commands.Cog):
             # Get the channel
             channel = self.bot.get_channel(self.queue_channel_id)
             if not channel:
-                print(f"❌ Queue channel {self.queue_channel_id} not found!")
-                return
+                try:
+                    channel = await self.bot.fetch_channel(self.queue_channel_id)
+                    print(f"ℹ️ Queue channel {self.queue_channel_id} loaded via API fetch")
+                except Exception as e:
+                    print(f"❌ Queue channel {self.queue_channel_id} not found: {e}")
+                    return
             
             # Get old message ID from database
             old_message_id = await db.get_config('queue_message_id')
@@ -2035,10 +2040,14 @@ class SkrimmishCog(commands.Cog):
             
             # Load the banner image
             banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
-            banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
-            
-            # Send the new message with the banner
-            message = await channel.send(file=banner_file, embed=embed, view=self.queue_view)
+            if os.path.exists(banner_path):
+                banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
+                # Send the new message with the banner
+                message = await channel.send(file=banner_file, embed=embed, view=self.queue_view)
+            else:
+                embed.set_image(url=None)
+                print(f"⚠️ Banner image not found at {banner_path}, sending queue UI without image")
+                message = await channel.send(embed=embed, view=self.queue_view)
             self.queue_view.message = message
             
             # Store the new message ID in database
@@ -2054,6 +2063,7 @@ class SkrimmishCog(commands.Cog):
             
         except Exception as e:
             print(f"❌ Failed to setup queue on startup: {e}")
+            traceback.print_exc()
     
     async def load_persistent_leaderboards(self):
         """Load all persistent leaderboards from database on bot startup"""

@@ -5,7 +5,15 @@ import os
 from dotenv import load_dotenv
 import time
 import asyncio
+import sys
 from database import db
+
+# Ensure print logs are flushed in non-interactive environments (systemd/journald).
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 # Load environment variables
 load_dotenv()
