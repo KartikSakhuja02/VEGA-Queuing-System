@@ -41,7 +41,7 @@ class VALMBot(commands.Bot):
         except Exception as e:
             print(f"❌ Database connection failed: {e}")
             print("Make sure PostgreSQL is running and DATABASE_URL is correct in .env")
-            return
+            raise
         
         # Load cogs
         await self.load_cogs()

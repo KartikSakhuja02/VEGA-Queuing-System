@@ -11,6 +11,17 @@ class Database:
         database_url = os.getenv('DATABASE_URL')
         if not database_url:
             raise ValueError("DATABASE_URL not found in environment variables")
+
+        database_url = database_url.strip().strip('"').strip("'")
+        if database_url.startswith('DATABASE_URL='):
+            # Defensive fallback for malformed .env values like:
+            # DATABASE_URL=DATABASE_URL=postgresql://...
+            database_url = database_url.split('=', 1)[1].strip()
+
+        if not database_url.startswith(('postgres://', 'postgresql://')):
+            raise ValueError(
+                "Invalid DATABASE_URL format. Expected postgres:// or postgresql://"
+            )
         
         self.pool = await asyncpg.create_pool(
             database_url,
