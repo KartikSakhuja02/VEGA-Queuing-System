@@ -1278,11 +1278,13 @@ class QueueButton(discord.ui.Button):
         )
     
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
         # Check if user is already in queue
         in_queue = await db.is_in_queue(interaction.user.id)
         
         if in_queue:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ You're already in the queue!",
                 ephemeral=True
             )
@@ -1292,14 +1294,11 @@ class QueueButton(discord.ui.Button):
         success = await db.add_to_queue(interaction.user.id, str(interaction.user))
         
         if not success:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ Failed to join queue. Please try again.",
                 ephemeral=True
             )
             return
-        
-        # Respond to interaction immediately (Discord requires response within 3 seconds)
-        await interaction.response.defer(ephemeral=True)
         
         # Get updated queue
         queue = await db.get_queue()
@@ -1377,7 +1376,7 @@ class QueueButton(discord.ui.Button):
             # Update the queue display again (now empty)
             await self.view.update_queue_display(
                 interaction,
-                activity_title="Player Left Queue",
+                activity_title="Match Created",
                 activity_user=interaction.user.mention,
             )
             
@@ -1493,11 +1492,13 @@ class LeaveButton(discord.ui.Button):
         )
     
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
         # Check if user is in queue
         in_queue = await db.is_in_queue(interaction.user.id)
         
         if not in_queue:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ You're not in the queue!",
                 ephemeral=True
             )
@@ -1507,10 +1508,12 @@ class LeaveButton(discord.ui.Button):
         success = await db.remove_from_queue(interaction.user.id)
         
         if success:
-            # Respond to interaction immediately
-            await interaction.response.defer(ephemeral=True)
             # Update the queue display
-            await self.view.update_queue_display(interaction)
+            await self.view.update_queue_display(
+                interaction,
+                activity_title="Player Left Queue",
+                activity_user=interaction.user.mention,
+            )
             
             # Get updated queue
             queue = await db.get_queue()
@@ -1533,7 +1536,7 @@ class LeaveButton(discord.ui.Button):
                     log_embed.timestamp = discord.utils.utcnow()
                     await logs_channel.send(embed=log_embed)
         else:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "❌ Failed to leave queue. Please try again.",
                 ephemeral=True
             )
@@ -1581,6 +1584,8 @@ class QueueView(discord.ui.View):
         self.add_item(LeaderboardButton())
         self.message: Optional[discord.Message] = None
         self.bot = bot
+        self.last_activity_title: Optional[str] = None
+        self.last_activity_user: Optional[str] = None
     
     async def start_inactivity_timer(self, channel_id: int, guild: discord.Guild):
         """Start 60-minute inactivity timer for queue"""
@@ -1666,9 +1671,16 @@ class QueueView(discord.ui.View):
         )
 
         if activity_title:
-            activity_block = activity_title
-            if activity_user:
-                activity_block = f"{activity_block}\n{activity_user}"
+            self.last_activity_title = activity_title
+            self.last_activity_user = activity_user
+
+        display_activity_title = activity_title or self.last_activity_title
+        display_activity_user = activity_user if activity_title else self.last_activity_user
+
+        if display_activity_title:
+            activity_block = display_activity_title
+            if display_activity_user:
+                activity_block = f"{activity_block}\n{display_activity_user}"
             embed.description = f"{activity_block}\n"
         
         # Build queue display with proper spacing
