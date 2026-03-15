@@ -27,7 +27,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-class VALMBot(commands.Bot):
+class VEGAAssassinsBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
         self.start_time = time.time()
@@ -79,7 +79,7 @@ class VALMBot(commands.Bot):
         await super().close()
 
 # Initialize bot
-bot = VALMBot()
+bot = VEGAAssassinsBot()
 
 # Error handler
 @bot.tree.error

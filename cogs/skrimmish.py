@@ -39,6 +39,27 @@ queue_inactivity_timers = {}
 # Lock to prevent race condition with autoping
 autoping_lock = asyncio.Lock()
 
+BRAND_NAME = "VEGA Assassins Matchmaking"
+BRAND_QUEUE_TITLE = "VEGA Assassins Matchmaking Queue"
+BRAND_LEADERBOARD_TITLE = "VEGA Assassins Matchmaking Leaderboard"
+BRAND_BANNER_CANDIDATES = ["Vega Banner.jpg", "valm_india_banner.jpg"]
+
+
+def resolve_gfx_path(candidates: list[str]) -> Optional[str]:
+    gfx_dir = os.path.join(os.getcwd(), "GFX")
+    for filename in candidates:
+        path = os.path.join(gfx_dir, filename)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def get_queue_banner_file() -> Optional[discord.File]:
+    banner_path = resolve_gfx_path(BRAND_BANNER_CANDIDATES)
+    if not banner_path:
+        return None
+    return discord.File(banner_path, filename="vega_banner.jpg")
+
 # MMR Rank Thresholds and Role IDs
 MMR_RANKS = [
     (700, 850, 'IRON_ROLE_ID', 'Iron'),
@@ -1571,7 +1592,7 @@ class QueueView(discord.ui.View):
                 channel = guild.get_channel(channel_id)
                 if channel and self.message:
                     embed = discord.Embed(
-                        title="Valorant Mobile India Matchmaking Queue",
+                        title=BRAND_QUEUE_TITLE,
                         description="Emptying queue due to 60 minutes of inactivity\nRe-enter the queue if you are still looking to play!",
                         color=0x2B2D31  # Dark gray
                     )
@@ -1580,7 +1601,7 @@ class QueueView(discord.ui.View):
                         value="**Queue 0/2**\n\n",
                         inline=False
                     )
-                    embed.set_image(url="attachment://valm_india_banner.jpg")
+                    embed.set_image(url="attachment://vega_banner.jpg")
                     embed.timestamp = discord.utils.utcnow()
                     
                     try:
@@ -1627,7 +1648,7 @@ class QueueView(discord.ui.View):
         
         # Create embed with clean NeatQueue style
         embed = discord.Embed(
-            title="VALM INDIA MATCHMAKING Queue",
+            title=BRAND_QUEUE_TITLE,
             color=0xED4245  # Discord red
         )
         
@@ -1647,7 +1668,7 @@ class QueueView(discord.ui.View):
         )
         
         # Set the banner image
-        embed.set_image(url="attachment://valm_india_banner.jpg")
+        embed.set_image(url="attachment://vega_banner.jpg")
         
         # Add timestamp at bottom
         embed.timestamp = discord.utils.utcnow()
@@ -1871,7 +1892,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
     """Build the leaderboard embed - FSN style with rank change arrows"""
     if not players:
         embed = discord.Embed(
-            title="VALM India Leaderboard",
+            title=BRAND_LEADERBOARD_TITLE,
             description="No registered players found!",
             color=0x2B2D31
         )
@@ -1880,7 +1901,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         return embed
     
     embed = discord.Embed(
-        title="VALM India Leaderboard",
+        title=BRAND_LEADERBOARD_TITLE,
         color=0x2B2D31,
         description=""
     )
@@ -2013,7 +2034,7 @@ class SkrimmishCog(commands.Cog):
             
             # Create the queue embed with NeatQueue style
             embed = discord.Embed(
-                title="VALM INDIA MATCHMAKING Queue",
+                title=BRAND_QUEUE_TITLE,
                 color=0xED4245  # Discord red
             )
             
@@ -2033,20 +2054,19 @@ class SkrimmishCog(commands.Cog):
             )
             
             # Set the banner image
-            embed.set_image(url="attachment://valm_india_banner.jpg")
+            embed.set_image(url="attachment://vega_banner.jpg")
             
             # Add timestamp
             embed.timestamp = discord.utils.utcnow()
             
             # Load the banner image
-            banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
-            if os.path.exists(banner_path):
-                banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
+            banner_file = get_queue_banner_file()
+            if banner_file:
                 # Send the new message with the banner
                 message = await channel.send(file=banner_file, embed=embed, view=self.queue_view)
             else:
                 embed.set_image(url=None)
-                print(f"⚠️ Banner image not found at {banner_path}, sending queue UI without image")
+                print("⚠️ Queue banner image not found in GFX, sending queue UI without image")
                 message = await channel.send(embed=embed, view=self.queue_view)
             self.queue_view.message = message
             
@@ -2160,7 +2180,7 @@ class SkrimmishCog(commands.Cog):
         
         # Create the queue embed with NeatQueue style
         embed = discord.Embed(
-            title="VALM INDIA MATCHMAKING Queue",
+            title=BRAND_QUEUE_TITLE,
             color=0xED4245  # Discord red
         )
         
@@ -2180,21 +2200,27 @@ class SkrimmishCog(commands.Cog):
         )
         
         # Set the banner image
-        embed.set_image(url="attachment://valm_india_banner.jpg")
+        embed.set_image(url="attachment://vega_banner.jpg")
         
         # Add timestamp
         embed.timestamp = discord.utils.utcnow()
         
         # Load the banner image
-        banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
-        banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
-        
-        # Send the message with buttons and banner
-        await interaction.response.send_message(
-            file=banner_file,
-            embed=embed,
-            view=self.queue_view
-        )
+        banner_file = get_queue_banner_file()
+
+        # Send the message with buttons and banner when available.
+        if banner_file:
+            await interaction.response.send_message(
+                file=banner_file,
+                embed=embed,
+                view=self.queue_view
+            )
+        else:
+            embed.set_image(url=None)
+            await interaction.response.send_message(
+                embed=embed,
+                view=self.queue_view
+            )
         
         # Store the message reference
         message = await interaction.original_response()
@@ -3010,73 +3036,6 @@ BOTTOM_SCORE: 8"""
             embed.set_footer(text=f"Requested by {interaction.user.name}")
             
             await interaction.response.send_message(embed=embed)
-    
-    @app_commands.command(name="leaderboard", description="View the top players by MMR")
-    async def leaderboard(self, interaction: discord.Interaction):
-        """Show the leaderboard with top players ranked by MMR"""
-        await interaction.response.defer()
-        
-        # Get top 10 players
-        top_players = await db.get_leaderboard(limit=10)
-        
-        if not top_players:
-            embed = discord.Embed(
-                title="📊 Leaderboard",
-                description="No players have played any matches yet!",
-                color=0xFFD700
-            )
-            await interaction.followup.send(embed=embed)
-            return
-        
-        # Build leaderboard embed
-        embed = discord.Embed(
-            title="🏆 Skrimmish Leaderboard - Top 10",
-            description="Ranked by MMR",
-            color=0xFFD700
-        )
-        
-        # Add players to embed
-        for idx, player in enumerate(top_players, start=1):
-            # Get rank emoji
-            if idx == 1:
-                rank_emoji = "🥇"
-            elif idx == 2:
-                rank_emoji = "🥈"
-            elif idx == 3:
-                rank_emoji = "🥉"
-            else:
-                rank_emoji = f"`#{idx}`"
-            
-            # Get streak emoji
-            streak = player['streak']
-            if streak > 0:
-                streak_display = f"🔥 {streak}W"
-            elif streak < 0:
-                streak_display = f"❄️ {abs(streak)}L"
-            else:
-                streak_display = "➖"
-            
-            # Format player info
-            player_name = player['discord_username'] or f"<@{player['user_id']}>"
-            ign = player['player_ign']
-            mmr = player['mmr']
-            wins = player['wins']
-            losses = player['losses']
-            winrate = player['winrate']
-            mvp_count = player.get('mvp_count', 0)
-            
-            mvp_display = f" | **MVPs:** 🏆 {mvp_count}" if mvp_count > 0 else ""
-            
-            embed.add_field(
-                name=f"{rank_emoji} {player_name}",
-                value=f"**IGN:** {ign}\n"
-                      f"**MMR:** {mmr:,} | **W/L:** {wins}-{losses} ({winrate:.1f}%){mvp_display}\n"
-                      f"**Streak:** {streak_display}",
-                inline=False
-            )
-        
-        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
-        await interaction.followup.send(embed=embed)
     
     @app_commands.command(name="skrimmish-leaderboard", description="Create a persistent auto-updating leaderboard in this channel")
     @app_commands.checks.has_permissions(administrator=True)
