@@ -78,10 +78,20 @@ bot = VALMBot()
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     async def send_error_message(message: str):
         """Reply safely even if the interaction has already been acknowledged."""
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(message, ephemeral=True)
+            else:
+                await interaction.response.send_message(message, ephemeral=True)
+        except discord.HTTPException as exc:
+            # Handle response state races where Discord reports the interaction was already acknowledged.
+            if getattr(exc, "code", None) == 40060:
+                try:
+                    await interaction.followup.send(message, ephemeral=True)
+                except Exception:
+                    pass
+            else:
+                raise
 
     if isinstance(error, app_commands.CommandOnCooldown):
         await send_error_message(f"Command is on cooldown. Try again in {error.retry_after:.2f}s")
