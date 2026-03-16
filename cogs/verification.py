@@ -5,7 +5,6 @@ import re
 
 import aiohttp
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 from database import db
@@ -57,6 +56,10 @@ class VerificationCog(commands.Cog):
     def _logs_channel_id(self) -> int | None:
         return self._env_int("LOGS_CHANNEL_ID")
 
+    def _ocr_logs_channel_id(self) -> int | None:
+        # Dedicated OCR logs channel. Falls back to LOGS_CHANNEL_ID if not set.
+        return self._env_int("OCR_LOGS_CHANNEL_ID") or self._logs_channel_id()
+
     async def _get_logs_channel(self, guild: discord.Guild):
         logs_channel_id = self._logs_channel_id()
         if not logs_channel_id:
@@ -75,6 +78,20 @@ class VerificationCog(commands.Cog):
         logs_channel = await self._get_logs_channel(guild)
         if logs_channel:
             await logs_channel.send(content=content, embed=embed)
+
+    async def _send_ocr_log_message(self, guild: discord.Guild, content: str | None = None, embed: discord.Embed | None = None):
+        ocr_channel_id = self._ocr_logs_channel_id()
+        if not ocr_channel_id:
+            return
+
+        ocr_channel = guild.get_channel(ocr_channel_id)
+        if not ocr_channel:
+            try:
+                ocr_channel = await self.bot.fetch_channel(ocr_channel_id)
+            except Exception:
+                return
+
+        await ocr_channel.send(content=content, embed=embed)
 
     def _can_review_submission(self, member: discord.Member) -> bool:
         permissions = member.guild_permissions
@@ -100,7 +117,7 @@ class VerificationCog(commands.Cog):
             ),
         )
         log_embed.timestamp = discord.utils.utcnow()
-        await self._send_log_message(guild, embed=log_embed)
+        await self._send_ocr_log_message(guild, embed=log_embed)
 
     async def _extract_ign_from_attachment(self, attachment: discord.Attachment) -> str | None:
         if not OCR_AVAILABLE:
@@ -334,22 +351,6 @@ class VerificationCog(commands.Cog):
         await self._send_log_message(guild,
             f"Submission approved by {admin_member.mention}. {reviewed_user.mention} has been verified and assigned both roles. {ign_note}"
         )
-
-    @app_commands.command(name="setup_verification", description="Post screenshot verification instructions in this channel")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def setup_verification(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            "Screenshot verification is active. Bot output for this workflow is sent to the logs channel only.",
-            ephemeral=True
-        )
-
-    @setup_verification.error
-    async def setup_verification_error(self, interaction: discord.Interaction, error):
-        if isinstance(error, app_commands.MissingPermissions):
-            await interaction.response.send_message(
-                "You need Administrator permissions to use this command.",
-                ephemeral=True
-            )
 
 async def setup(bot):
     await bot.add_cog(VerificationCog(bot))
