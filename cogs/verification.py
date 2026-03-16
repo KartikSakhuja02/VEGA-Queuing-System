@@ -1,169 +1,299 @@
+import base64
+import io
+import os
+import re
+
+import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
-import os
+
+from database import db
+
+try:
+    from PIL import Image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
 
 BRAND_NAME = "VEGA Assassins Matchmaking"
-VERIFICATION_BANNER_CANDIDATES = ["Vega Banner.jpg", "valm_india_banner.jpg"]
-VERIFICATION_LOGO_CANDIDATES = ["Vega Logo.jpg", "LOGO.jpeg"]
 
-
-def resolve_gfx_path(candidates: list[str]) -> str | None:
-    gfx_dir = os.path.join(os.getcwd(), "GFX")
-    for filename in candidates:
-        path = os.path.join(gfx_dir, filename)
-        if os.path.exists(path):
-            return path
-    return None
-
-class VerificationButton(discord.ui.Button):
-    """Persistent button for verification"""
-    def __init__(self):
-        super().__init__(
-            style=discord.ButtonStyle.success,
-            label="Verify Access",
-            custom_id="verification_button"  # Persistent ID
-        )
-    
-    async def callback(self, interaction: discord.Interaction):
-        """Handle verification button click"""
-        # Get role ID from environment
-        role_id = int(os.getenv('VERIFICATION_ROLE_ID'))
-        role = interaction.guild.get_role(role_id)
-        
-        if not role:
-            await interaction.response.send_message(
-                "Verification role not found. Please contact an admin.",
-                ephemeral=True
-            )
-            return
-        
-        # Check if user already has the role
-        if role in interaction.user.roles:
-            await interaction.response.send_message(
-                "You are already verified and have access to matchmaking.",
-                ephemeral=True
-            )
-            return
-        
-        # Assign the role
-        try:
-            await interaction.user.add_roles(role)
-            embed = discord.Embed(
-                title="Verification Complete",
-                description=(
-                    f"Welcome to **{BRAND_NAME}**.\n\n"
-                    f"You now have the {role.mention} role and can participate in scrimmage matchmaking.\n\n"
-                    "Next Steps:\n"
-                    "- Register your IGN with `/ign <your_name>`\n"
-                    "- Open the queue channel and select Join Queue"
-                ),
-                color=0xED4245
-            )
-            embed.set_footer(text=f"{BRAND_NAME} • Competitive Matchmaking")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "I do not have permission to assign roles. Please contact an admin.",
-                ephemeral=True
-            )
-        except Exception as e:
-            await interaction.response.send_message(
-                f"An error occurred: {str(e)}",
-                ephemeral=True
-            )
-
-class VerificationView(discord.ui.View):
-    """Persistent view for verification"""
-    def __init__(self):
-        super().__init__(timeout=None)  # Persistent view - never times out
-        self.add_item(VerificationButton())
 
 class VerificationCog(commands.Cog):
-    """Cog for handling matchmaking verification"""
+    """Screenshot-based verification with admin reaction approval."""
+
     def __init__(self, bot):
         self.bot = bot
-    
+        self.pending_submissions: dict[int, dict] = {}
+
+    @staticmethod
+    def _env_int(name: str) -> int | None:
+        value = os.getenv(name)
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    def _verification_channel_id(self) -> int | None:
+        return self._env_int("MM_VERIFICATION_CHANNEL_ID")
+
+    def _matchmaking_role_id(self) -> int | None:
+        return self._env_int("MATCHMAKING_VERIFIED_ROLE_ID")
+
+    def _skrimmish_role_id(self) -> int | None:
+        return self._env_int("SKRIMMISH_VERIFIED_ROLE_ID") or self._env_int("VERIFICATION_ROLE_ID")
+
+    async def _extract_ign_from_attachment(self, attachment: discord.Attachment) -> str | None:
+        if not OCR_AVAILABLE:
+            return None
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return None
+
+        image_data = await attachment.read()
+        image = Image.open(io.BytesIO(image_data))
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format="PNG")
+        image_b64 = base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")
+
+        prompt = (
+            "Extract the player's in-game name (IGN) from this screenshot. "
+            "Return ONLY one line in this exact format: IGN: <name>."
+        )
+
+        url = (
+            "https://generativelanguage.googleapis.com/v1/models/"
+            f"gemini-2.5-flash:generateContent?key={api_key}"
+        )
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": "image/png",
+                                "data": image_b64,
+                            }
+                        },
+                    ]
+                }
+            ]
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status != 200:
+                    return None
+                result = await resp.json()
+
+        try:
+            result_text = result["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            return None
+
+        ign_match = re.search(r"IGN\s*:\s*(.+)", result_text, re.IGNORECASE)
+        ign = ign_match.group(1).strip() if ign_match else result_text.strip().splitlines()[0].strip()
+        ign = ign.strip("`\"' ")
+
+        if not ign or len(ign) > 64:
+            return None
+        return ign
+
     @commands.Cog.listener()
     async def on_ready(self):
-        """Add persistent view when bot starts"""
-        # Register the persistent view
-        self.bot.add_view(VerificationView())
-        print("✅ Verification view registered")
-    
-    @app_commands.command(name="setup_verification", description="Setup verification UI in this channel")
+        channel_id = self._verification_channel_id()
+        if channel_id:
+            print(f"✅ Screenshot verification enabled on channel {channel_id}")
+        else:
+            print("ℹ️ MM_VERIFICATION_CHANNEL_ID not configured; screenshot verification disabled")
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot or not message.guild:
+            return
+
+        channel_id = self._verification_channel_id()
+        if not channel_id or message.channel.id != channel_id:
+            return
+
+        image_attachment = next(
+            (
+                att
+                for att in message.attachments
+                if att.content_type and att.content_type.startswith("image/")
+            ),
+            None,
+        )
+        if not image_attachment:
+            return
+
+        ign = await self._extract_ign_from_attachment(image_attachment)
+        self.pending_submissions[message.id] = {
+            "user_id": message.author.id,
+            "ign": ign,
+            "processed": False,
+        }
+
+        try:
+            await message.add_reaction("✅")
+            await message.add_reaction("❌")
+        except Exception:
+            pass
+
+        review_embed = discord.Embed(
+            title="Verification Submission Received",
+            color=0xED4245,
+            description=(
+                f"User: {message.author.mention}\n"
+                f"Detected IGN: **{ign if ign else 'Not detected'}**\n\n"
+                "Admin Review: react ✅ on the screenshot message to approve or ❌ to reject."
+            ),
+        )
+        await message.reply(embed=review_embed, mention_author=False)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        if payload.guild_id is None:
+            return
+
+        emoji = str(payload.emoji)
+        if emoji not in {"✅", "❌"}:
+            return
+
+        if self.bot.user and payload.user_id == self.bot.user.id:
+            return
+
+        channel_id = self._verification_channel_id()
+        if not channel_id or payload.channel_id != channel_id:
+            return
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+
+        admin_member = payload.member or guild.get_member(payload.user_id)
+        if not admin_member:
+            try:
+                admin_member = await guild.fetch_member(payload.user_id)
+            except Exception:
+                return
+
+        if not admin_member.guild_permissions.administrator:
+            return
+
+        channel = guild.get_channel(payload.channel_id)
+        if not channel:
+            try:
+                channel = await self.bot.fetch_channel(payload.channel_id)
+            except Exception:
+                return
+
+        try:
+            message = await channel.fetch_message(payload.message_id)
+        except Exception:
+            return
+
+        if message.author.bot:
+            return
+
+        submission = self.pending_submissions.get(message.id)
+        if not submission:
+            image_attachment = next(
+                (
+                    att
+                    for att in message.attachments
+                    if att.content_type and att.content_type.startswith("image/")
+                ),
+                None,
+            )
+            if not image_attachment:
+                return
+            submission = {
+                "user_id": message.author.id,
+                "ign": await self._extract_ign_from_attachment(image_attachment) if image_attachment else None,
+                "processed": False,
+            }
+            self.pending_submissions[message.id] = submission
+
+        if submission.get("processed"):
+            return
+
+        reviewed_user = guild.get_member(submission["user_id"])
+        if not reviewed_user:
+            try:
+                reviewed_user = await guild.fetch_member(submission["user_id"])
+            except Exception:
+                await channel.send("Submission user was not found in this server.")
+                submission["processed"] = True
+                return
+
+        if emoji == "❌":
+            submission["processed"] = True
+            await channel.send(
+                f"Submission rejected by {admin_member.mention}. No roles assigned for {reviewed_user.mention}."
+            )
+            return
+
+        matchmaking_role_id = self._matchmaking_role_id()
+        skrimmish_role_id = self._skrimmish_role_id()
+        if not matchmaking_role_id or not skrimmish_role_id:
+            await channel.send(
+                "Role IDs are not configured. Set MATCHMAKING_VERIFIED_ROLE_ID and SKRIMMISH_VERIFIED_ROLE_ID (or VERIFICATION_ROLE_ID)."
+            )
+            return
+
+        matchmaking_role = guild.get_role(matchmaking_role_id)
+        skrimmish_role = guild.get_role(skrimmish_role_id)
+        if not matchmaking_role or not skrimmish_role:
+            await channel.send("One or more configured verification roles were not found in this server.")
+            return
+
+        roles_to_add = [
+            role for role in (matchmaking_role, skrimmish_role) if role not in reviewed_user.roles
+        ]
+        if roles_to_add:
+            await reviewed_user.add_roles(*roles_to_add, reason="Approved screenshot verification")
+
+        ign = submission.get("ign")
+        ign_note = "IGN could not be detected. Use /admin-set-ign to set it manually."
+        if ign:
+            success, _ = await db.register_player(reviewed_user.id, str(reviewed_user), ign)
+            if success:
+                ign_note = f"IGN registered as **{ign}**."
+
+        submission["processed"] = True
+        await channel.send(
+            f"Submission approved by {admin_member.mention}. {reviewed_user.mention} has been verified and assigned both roles. {ign_note}"
+        )
+
+    @app_commands.command(name="setup_verification", description="Post screenshot verification instructions in this channel")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_verification(self, interaction: discord.Interaction):
-        """Setup the verification UI"""
-        # Get verification role and channel from environment
-        role_id = os.getenv('VERIFICATION_ROLE_ID')
-        channel_id = os.getenv('VERIFICATION_CHANNEL_ID')
-        
-        if not role_id or not channel_id:
-            await interaction.response.send_message(
-                "Please configure VERIFICATION_ROLE_ID and VERIFICATION_CHANNEL_ID in the .env file first.",
-                ephemeral=True
-            )
-            return
-        
-        role = interaction.guild.get_role(int(role_id))
-        if not role:
-            await interaction.response.send_message(
-                "Verification role not found. Please check VERIFICATION_ROLE_ID in .env.",
-                ephemeral=True
-            )
-            return
-        
-        # Create embed
         embed = discord.Embed(
             title=f"{BRAND_NAME} Verification",
+            color=0xED4245,
             description=(
-                f"Welcome to **{BRAND_NAME}**.\n\n"
-                "Verify to unlock competitive matchmaking, track performance, "
-                "and appear on the persistent leaderboard.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "What You Get:\n"
-                f"- {role.mention} role\n"
-                "- Access to ranked scrimmage matches\n"
-                "- Player stats tracking (wins, losses, MMR)\n"
-                "- Leaderboard ranking\n"
-                "- Match history and progression\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "Select Verify Access below to continue."
+                "Submit a clear screenshot in this channel for verification.\n\n"
+                "Process:\n"
+                "1. Player sends screenshot\n"
+                "2. Bot detects IGN from screenshot\n"
+                "3. Admin reacts ✅ to approve or ❌ to reject\n"
+                "4. On ✅, user gets matchmaking + skrimmish verified roles and IGN is registered"
             ),
-            color=0xED4245
         )
+        await interaction.channel.send(embed=embed)
+        await interaction.response.send_message("Verification instructions posted.", ephemeral=True)
 
-        files = []
-        banner_path = resolve_gfx_path(VERIFICATION_BANNER_CANDIDATES)
-        if banner_path:
-            files.append(discord.File(banner_path, filename="vega_verification_banner.jpg"))
-            embed.set_image(url="attachment://vega_verification_banner.jpg")
-
-        logo_path = resolve_gfx_path(VERIFICATION_LOGO_CANDIDATES)
-        if logo_path:
-            files.append(discord.File(logo_path, filename="vega_verification_logo.jpg"))
-            embed.set_thumbnail(url="attachment://vega_verification_logo.jpg")
-        elif interaction.guild.icon:
-            embed.set_thumbnail(url=interaction.guild.icon.url)
-
-        embed.set_footer(
-            text=f"{BRAND_NAME} • Competitive Matchmaking",
-            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
-        )
-        
-        # Send the verification message
-        view = VerificationView()
-        await interaction.channel.send(embed=embed, view=view, files=files)
-        
-        await interaction.response.send_message(
-            "Verification UI has been posted.",
-            ephemeral=True
-        )
-    
     @setup_verification.error
     async def setup_verification_error(self, interaction: discord.Interaction, error):
-        """Handle setup verification errors"""
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message(
                 "You need Administrator permissions to use this command.",

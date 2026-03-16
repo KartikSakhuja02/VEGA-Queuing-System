@@ -2338,53 +2338,6 @@ class SkrimmishCog(commands.Cog):
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
-    @app_commands.command(name="ign", description="Register your in-game name")
-    @app_commands.describe(player_ign="Your Valorant Mobile in-game name")
-    async def register_ign(self, interaction: discord.Interaction, player_ign: str):
-        """Register or update player's in-game name"""
-        user_id = interaction.user.id
-        discord_username = str(interaction.user)
-        
-        # Check if player is already registered
-        is_registered = await db.is_player_registered(user_id)
-        
-        # Register or update player
-        success, message = await db.register_player(user_id, discord_username, player_ign)
-        
-        if success:
-            if is_registered:
-                embed = discord.Embed(
-                    title="IGN Updated",
-                    description=f"Your in-game name has been updated to: **{player_ign}**",
-                    color=0xED4245
-                )
-            else:
-                embed = discord.Embed(
-                    title="Registration Complete",
-                    description=f"Welcome! Your in-game name has been registered as: **{player_ign}**\n\nYou can now participate in ranked matches and earn MMR!",
-                    color=0x00FF00
-                )
-                embed.add_field(name="Starting Stats", value="MMR: 700\nGames: 0\nWins: 0\nLosses: 0", inline=False)
-            
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-
-            # Sync rank role with the player's actual MMR in database.
-            profile = await db.get_player_profile(user_id)
-            if interaction.guild and profile:
-                await update_player_rank_role(interaction.guild, user_id, profile['mmr'])
-            
-            # Ensure persistent leaderboard messages are loaded before refresh.
-            if not active_leaderboards:
-                await self.load_persistent_leaderboards()
-
-            # Update all active leaderboards to show new player
-            await update_all_leaderboards()
-        else:
-            await interaction.response.send_message(
-                f"❌ Registration failed: {message}",
-                ephemeral=True
-            )
-    
     @app_commands.command(name="admin-set-ign", description="[Admin] Set or update a player's in-game name")
     @app_commands.describe(
         player="The player to set IGN for",
