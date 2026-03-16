@@ -42,6 +42,9 @@ class VerificationCog(commands.Cog):
     def _matchmaking_role_id(self) -> int | None:
         return self._env_int("MATCHMAKING_VERIFIED_ROLE_ID")
 
+    def _moderator_role_id(self) -> int | None:
+        return self._env_int("MODERATOR_ROLE_ID")
+
     def _skrimmish_role_id(self) -> int | None:
         # Preferred key after rename: SKRIMMISH_VERIFIED_ROLE.
         # Keep legacy fallbacks for compatibility.
@@ -72,6 +75,19 @@ class VerificationCog(commands.Cog):
         logs_channel = await self._get_logs_channel(guild)
         if logs_channel:
             await logs_channel.send(content=content, embed=embed)
+
+    def _can_review_submission(self, member: discord.Member) -> bool:
+        permissions = member.guild_permissions
+        if permissions.administrator:
+            return True
+        if permissions.manage_guild or permissions.manage_roles or permissions.moderate_members:
+            return True
+
+        moderator_role_id = self._moderator_role_id()
+        if moderator_role_id and any(role.id == moderator_role_id for role in member.roles):
+            return True
+
+        return False
 
     async def _send_ocr_log(self, guild: discord.Guild, user: discord.Member | discord.User, ign: str | None, source_message_id: int):
         log_embed = discord.Embed(
@@ -230,7 +246,7 @@ class VerificationCog(commands.Cog):
             except Exception:
                 return
 
-        if not admin_member.guild_permissions.administrator:
+        if not self._can_review_submission(admin_member):
             return
 
         channel = guild.get_channel(payload.channel_id)
