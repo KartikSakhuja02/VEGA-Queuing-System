@@ -43,7 +43,40 @@ class VerificationCog(commands.Cog):
         return self._env_int("MATCHMAKING_VERIFIED_ROLE_ID")
 
     def _skrimmish_role_id(self) -> int | None:
-        return self._env_int("SKRIMMISH_VERIFIED_ROLE_ID") or self._env_int("VERIFICATION_ROLE_ID")
+        # Preferred key after rename: SKRIMMISH_VERIFIED_ROLE.
+        # Keep legacy fallbacks for compatibility.
+        return (
+            self._env_int("SKRIMMISH_VERIFIED_ROLE")
+            or self._env_int("SKRIMMISH_VERIFIED_ROLE_ID")
+            or self._env_int("VERIFICATION_ROLE_ID")
+        )
+
+    def _logs_channel_id(self) -> int | None:
+        return self._env_int("LOGS_CHANNEL_ID")
+
+    async def _send_ocr_log(self, guild: discord.Guild, user: discord.Member | discord.User, ign: str | None, source_message_id: int):
+        logs_channel_id = self._logs_channel_id()
+        if not logs_channel_id:
+            return
+
+        logs_channel = guild.get_channel(logs_channel_id)
+        if not logs_channel:
+            try:
+                logs_channel = await self.bot.fetch_channel(logs_channel_id)
+            except Exception:
+                return
+
+        log_embed = discord.Embed(
+            title="Matchmaking Verification OCR",
+            color=0xED4245,
+            description=(
+                f"User: {user.mention}\n"
+                f"Detected IGN: **{ign or 'Not detected'}**\n"
+                f"Source Message ID: `{source_message_id}`"
+            ),
+        )
+        log_embed.timestamp = discord.utils.utcnow()
+        await logs_channel.send(embed=log_embed)
 
     async def _extract_ign_from_attachment(self, attachment: discord.Attachment) -> str | None:
         if not OCR_AVAILABLE:
@@ -142,6 +175,8 @@ class VerificationCog(commands.Cog):
             "processed": False,
         }
 
+        await self._send_ocr_log(message.guild, message.author, ign, message.id)
+
         try:
             await message.add_reaction("✅")
             await message.add_reaction("❌")
@@ -222,6 +257,7 @@ class VerificationCog(commands.Cog):
                 "processed": False,
             }
             self.pending_submissions[message.id] = submission
+            await self._send_ocr_log(guild, message.author, submission.get("ign"), message.id)
 
         if submission.get("processed"):
             return
@@ -246,7 +282,7 @@ class VerificationCog(commands.Cog):
         skrimmish_role_id = self._skrimmish_role_id()
         if not matchmaking_role_id or not skrimmish_role_id:
             await channel.send(
-                "Role IDs are not configured. Set MATCHMAKING_VERIFIED_ROLE_ID and SKRIMMISH_VERIFIED_ROLE_ID (or VERIFICATION_ROLE_ID)."
+                "Role IDs are not configured. Set MATCHMAKING_VERIFIED_ROLE_ID and SKRIMMISH_VERIFIED_ROLE."
             )
             return
 
