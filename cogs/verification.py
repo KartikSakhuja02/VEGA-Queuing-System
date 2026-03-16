@@ -54,18 +54,26 @@ class VerificationCog(commands.Cog):
     def _logs_channel_id(self) -> int | None:
         return self._env_int("LOGS_CHANNEL_ID")
 
-    async def _send_ocr_log(self, guild: discord.Guild, user: discord.Member | discord.User, ign: str | None, source_message_id: int):
+    async def _get_logs_channel(self, guild: discord.Guild):
         logs_channel_id = self._logs_channel_id()
         if not logs_channel_id:
-            return
+            return None
 
         logs_channel = guild.get_channel(logs_channel_id)
-        if not logs_channel:
-            try:
-                logs_channel = await self.bot.fetch_channel(logs_channel_id)
-            except Exception:
-                return
+        if logs_channel:
+            return logs_channel
 
+        try:
+            return await self.bot.fetch_channel(logs_channel_id)
+        except Exception:
+            return None
+
+    async def _send_log_message(self, guild: discord.Guild, content: str | None = None, embed: discord.Embed | None = None):
+        logs_channel = await self._get_logs_channel(guild)
+        if logs_channel:
+            await logs_channel.send(content=content, embed=embed)
+
+    async def _send_ocr_log(self, guild: discord.Guild, user: discord.Member | discord.User, ign: str | None, source_message_id: int):
         log_embed = discord.Embed(
             title="Matchmaking Verification OCR",
             color=0xED4245,
@@ -76,7 +84,7 @@ class VerificationCog(commands.Cog):
             ),
         )
         log_embed.timestamp = discord.utils.utcnow()
-        await logs_channel.send(embed=log_embed)
+        await self._send_log_message(guild, embed=log_embed)
 
     async def _extract_ign_from_attachment(self, attachment: discord.Attachment) -> str | None:
         if not OCR_AVAILABLE:
@@ -192,7 +200,8 @@ class VerificationCog(commands.Cog):
                 "Admin Review: react ✅ on the screenshot message to approve or ❌ to reject."
             ),
         )
-        await message.reply(embed=review_embed, mention_author=False)
+        review_embed.timestamp = discord.utils.utcnow()
+        await self._send_log_message(message.guild, embed=review_embed)
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
@@ -267,13 +276,13 @@ class VerificationCog(commands.Cog):
             try:
                 reviewed_user = await guild.fetch_member(submission["user_id"])
             except Exception:
-                await channel.send("Submission user was not found in this server.")
+                await self._send_log_message(guild, "Submission user was not found in this server.")
                 submission["processed"] = True
                 return
 
         if emoji == "❌":
             submission["processed"] = True
-            await channel.send(
+            await self._send_log_message(guild,
                 f"Submission rejected by {admin_member.mention}. No roles assigned for {reviewed_user.mention}."
             )
             return
@@ -281,7 +290,7 @@ class VerificationCog(commands.Cog):
         matchmaking_role_id = self._matchmaking_role_id()
         skrimmish_role_id = self._skrimmish_role_id()
         if not matchmaking_role_id or not skrimmish_role_id:
-            await channel.send(
+            await self._send_log_message(guild,
                 "Role IDs are not configured. Set MATCHMAKING_VERIFIED_ROLE_ID and SKRIMMISH_VERIFIED_ROLE."
             )
             return
@@ -289,7 +298,7 @@ class VerificationCog(commands.Cog):
         matchmaking_role = guild.get_role(matchmaking_role_id)
         skrimmish_role = guild.get_role(skrimmish_role_id)
         if not matchmaking_role or not skrimmish_role:
-            await channel.send("One or more configured verification roles were not found in this server.")
+            await self._send_log_message(guild, "One or more configured verification roles were not found in this server.")
             return
 
         roles_to_add = [
@@ -306,27 +315,17 @@ class VerificationCog(commands.Cog):
                 ign_note = f"IGN registered as **{ign}**."
 
         submission["processed"] = True
-        await channel.send(
+        await self._send_log_message(guild,
             f"Submission approved by {admin_member.mention}. {reviewed_user.mention} has been verified and assigned both roles. {ign_note}"
         )
 
     @app_commands.command(name="setup_verification", description="Post screenshot verification instructions in this channel")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_verification(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title=f"{BRAND_NAME} Verification",
-            color=0xED4245,
-            description=(
-                "Submit a clear screenshot in this channel for verification.\n\n"
-                "Process:\n"
-                "1. Player sends screenshot\n"
-                "2. Bot detects IGN from screenshot\n"
-                "3. Admin reacts ✅ to approve or ❌ to reject\n"
-                "4. On ✅, user gets matchmaking + skrimmish verified roles and IGN is registered"
-            ),
+        await interaction.response.send_message(
+            "Screenshot verification is active. Bot output for this workflow is sent to the logs channel only.",
+            ephemeral=True
         )
-        await interaction.channel.send(embed=embed)
-        await interaction.response.send_message("Verification instructions posted.", ephemeral=True)
 
     @setup_verification.error
     async def setup_verification_error(self, interaction: discord.Interaction, error):
