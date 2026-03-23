@@ -2205,7 +2205,9 @@ class SkrimmishCog(commands.Cog):
             content_type=content_type or "application/octet-stream",
         )
 
-        timeout = aiohttp.ClientTimeout(total=30)
+        # OCR inference can take a while on first run / CPU, so keep a generous read timeout.
+        timeout = aiohttp.ClientTimeout(total=240, connect=30, sock_connect=30, sock_read=240)
+        print(f"[test-ocr] Timeout config: total={timeout.total}, connect={timeout.connect}, sock_read={timeout.sock_read}")
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data, headers=headers, timeout=timeout) as response:
