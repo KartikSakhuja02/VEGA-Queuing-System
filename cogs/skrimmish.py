@@ -268,17 +268,6 @@ class SubmitSSButton(discord.ui.Button):
             await interaction.response.send_message("❌ Match data not found.", ephemeral=True)
             return
         
-        # Check if OCR is available
-        if not OCR_AVAILABLE:
-            await interaction.response.send_message(
-                "❌ **Screenshot feature is not available!**\n\n"
-                "OCR dependencies are not installed on this server.\n"
-                "Please contact the administrator to enable this feature.\n\n"
-                "Required: `pip install google-generativeai Pillow`",
-                ephemeral=True
-            )
-            return
-        
         player1_id = match_data['player1'].id
         player2_id = match_data['player2'].id
         
@@ -348,191 +337,22 @@ class SubmitSSView(discord.ui.View):
         retry_view.message = retry_message
     
     async def process_screenshot(self, attachment, channel):
-        """Process the uploaded screenshot using Gemini OCR"""
+        """Process uploaded screenshot and start manual winner voting."""
         match_data = active_matches.get(self.match_id)
         if not match_data:
             return
         
         try:
-            # Download image
-            image_data = await attachment.read()
-            
-            # Send processing message
-            processing_embed = discord.Embed(
-                title="⏳ Processing Screenshot...",
-                description="Analyzing the match results using AI...",
-                color=0xFFA500
-            )
-            processing_msg = await channel.send(embed=processing_embed)
-            
-            # Convert image bytes to PIL Image and then to base64 for API
-            import base64
-            image = Image.open(io.BytesIO(image_data))
-            
-            # Convert to RGB if needed
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # Save to bytes
-            img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format='PNG')
-            img_byte_arr = img_byte_arr.getvalue()
-            image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
-            
-            prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the player information.
-
-The scoreboard has TWO players:
-- TOP player: Has a YELLOW/GREEN/GOLD colored background (displayed at the top)
-- BOTTOM player: Has a RED colored background (displayed at the bottom)
-
-For each player, find:
-1. Their IGN/username
-2. Their score (the large number shown next to their name)
-
-IMPORTANT: Report the EXACT scores as displayed. Do NOT swap or assume which score is higher.
-
-Return ONLY in this exact format:
-TOP_PLAYER: [name of player with yellow/green background at top]
-TOP_SCORE: [exact score number for top player]
-BOTTOM_PLAYER: [name of player with red background at bottom]
-BOTTOM_SCORE: [exact score number for bottom player]
-
-Example:
-TOP_PLAYER: aimboss
-TOP_SCORE: 10
-BOTTOM_PLAYER: MatarPaneer
-BOTTOM_SCORE: 8"""
-            
-            # Use direct REST API call to bypass deprecated SDK
-            import aiohttp
-            api_key = os.getenv('GEMINI_API_KEY')
-            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}"
-            
-            payload = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {
-                            "inline_data": {
-                                "mime_type": "image/png",
-                                "data": image_b64
-                            }
-                        }
-                    ]
-                }]
+            match_data['screenshot_url'] = attachment.url
+            match_data['voters'] = set()
+            match_data['votes'] = {
+                match_data['team1_name']: 0,
+                match_data['team2_name']: 0
             }
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status != 200:
-                        error_text = await resp.text()
-                        raise ValueError(f"API Error: {error_text}")
-                    
-                    result = await resp.json()
-                    result_text = result['candidates'][0]['content']['parts'][0]['text']
-            
-            # Parse the response
-            top_player_match = re.search(r'TOP_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
-            top_score_match = re.search(r'TOP_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
-            bottom_player_match = re.search(r'BOTTOM_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
-            bottom_score_match = re.search(r'BOTTOM_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
-            
-            if not all([top_player_match, top_score_match, bottom_player_match, bottom_score_match]):
-                raise ValueError("Could not extract match data from screenshot")
-            
-            top_player = top_player_match.group(1).strip()
-            top_score = int(top_score_match.group(1))
-            bottom_player = bottom_player_match.group(1).strip()
-            bottom_score = int(bottom_score_match.group(1))
-            
-            # Determine winner based on scores
-            winner_ign = top_player if top_score > bottom_score else bottom_player
-            loser_ign = bottom_player if top_score > bottom_score else top_player
-            winner_score = max(top_score, bottom_score)
-            loser_score = min(top_score, bottom_score)
-            
-            # Debug: Print extracted IGNs
-            print(f"🔍 OCR extracted: Top='{top_player}' ({top_score}), Bottom='{bottom_player}' ({bottom_score})")
-            print(f"🔍 Determined: Winner='{winner_ign}' ({winner_score}), Loser='{loser_ign}' ({loser_score})")
-            
-            # Look up players in database by their IGNs
-            winner_profile = await db.get_player_by_ign(winner_ign)
-            loser_profile = await db.get_player_by_ign(loser_ign)
-            
-            if not winner_profile:
-                print(f"⚠️ Winner IGN '{winner_ign}' not found in database")
-            if not loser_profile:
-                print(f"⚠️ Loser IGN '{loser_ign}' not found in database")
-            
-            # Get Discord user objects
-            winner_user = None
-            loser_user = None
-            winner_registered = False
-            loser_registered = False
-            
-            if winner_profile:
-                winner_user = channel.guild.get_member(winner_profile['user_id'])
-                if winner_user:
-                    winner_registered = True
-                    print(f"✅ Found winner: {winner_user.display_name} (IGN: {winner_ign})")
-                else:
-                    print(f"⚠️ Winner user with ID {winner_profile['user_id']} not in guild")
-            
-            if loser_profile:
-                loser_user = channel.guild.get_member(loser_profile['user_id'])
-                if loser_user:
-                    loser_registered = True
-                    print(f"✅ Found loser: {loser_user.display_name} (IGN: {loser_ign})")
-                else:
-                    print(f"⚠️ Loser user with ID {loser_profile['user_id']} not in guild")
-            
-            # If either player not found, show error
-            if not winner_user or not loser_user:
-                error_msg = "❌ Could not find players in database:\\n"
-                if not winner_user:
-                    error_msg += f"• Winner IGN '{winner_ign}' "
-                    error_msg += "not registered" if not winner_profile else "not in this server"
-                    error_msg += "\\n"
-                if not loser_user:
-                    error_msg += f"• Loser IGN '{loser_ign}' "
-                    error_msg += "not registered" if not loser_profile else "not in this server"
-                    error_msg += "\\n"
-                error_msg += "\\nPlayers must be registered with `/ign` command before their stats can be updated."
-                
-                await channel.send(error_msg)
-                await processing_msg.delete()
-                match_data['processing_ss'] = False
-                await self.send_retry_submission_ui(
-                    channel,
-                    "⚠️ OCR could not map the screenshot to valid registered match players."
-                )
-                # Don't continue with match completion
-                return
-            
-            # Delete processing message
-            await processing_msg.delete()
-            
-            # Update player stats in database (both players are registered at this point)
-            winner_stats = await db.update_player_stats(winner_user.id, won=True, mmr_change=32)
-            loser_stats = await db.update_player_stats(loser_user.id, won=False, mmr_change=-27)
-            
-            # Update rank roles
-            if winner_stats:
-                await update_player_rank_role(channel.guild, winner_user.id, winner_stats['mmr'])
-            if loser_stats:
-                await update_player_rank_role(channel.guild, loser_user.id, loser_stats['mmr'])
-            
-            # Send result in match channel (simple confirmation)
-            result_embed = discord.Embed(
-                title=f"✅ Match #{match_data['match_number']:04d} Complete",
-                description=(
-                    f"**Winner:** {winner_user.mention} - **{winner_score}**\\n"
-                    f"**Runner-up:** {loser_user.mention} - **{loser_score}**\\n\\n"
-                    f"Results posted to queue-results channel!"
-                ),
-                color=0x00FF00
+            await channel.send(
+                "✅ Screenshot received. Winner vote panel has been posted in queue-results."
             )
-            await channel.send(embed=result_embed)
             
             # Disable submit button
             for item in self.children:
@@ -545,126 +365,56 @@ BOTTOM_SCORE: 8"""
             if results_channel_id:
                 results_channel = channel.guild.get_channel(int(results_channel_id))
                 if results_channel:
-                    # Create detailed result embed for queue-results channel
+                    # Create NeatQueue-style winner voting embed
                     result_embed = discord.Embed(
-                        title=f"🏆 Winner For Queue#{match_data['match_number']:04d} 🏆",
-                        color=0xFFD700  # Gold color
+                        title=f"🏆 Winner For Queue#{match_data['match_number']:04d}🏆",
+                        color=0xED4245
                     )
                     
-                    # Add winner info with IGN
                     result_embed.add_field(
-                        name=f"**{winner_ign}**",
-                        value=f"{winner_user.mention}\n**Score:** {winner_score}",
-                        inline=True
+                        name=match_data['team1_name'],
+                        value="Votes: 0",
+                        inline=False
                     )
                     
-                    # Add loser info with IGN  
                     result_embed.add_field(
-                        name=f"**{loser_ign}**",
-                        value=f"{loser_user.mention}\n**Score:** {loser_score}",
-                        inline=True
+                        name=match_data['team2_name'],
+                        value="Votes: 0",
+                        inline=False
                     )
                     
-                    # Add MMR information
-                    if winner_stats and loser_stats:
-                        result_embed.add_field(
-                            name="📊 MMR Changes",
-                            value=(
-                                f"**{winner_user.mention}:** {winner_stats['mmr']-32:,} → **{winner_stats['mmr']:,}** (+32)\\n"
-                                f"**{loser_user.mention}:** {loser_stats['mmr']+27:,} → **{loser_stats['mmr']:,}** (-27)"
-                            ),
-                            inline=False
-                        )
-                    
-                    # Add screenshot
+                    result_embed.add_field(
+                        name="\u200b",
+                        value="2 votes required!",
+                        inline=False
+                    )
+
                     result_embed.set_image(url=attachment.url)
-                    
-                    # Add timestamp
                     result_embed.timestamp = discord.utils.utcnow()
-                    result_embed.set_footer(text="Vote for the MVP below! 🏆")
-                    
-                    # Create MVP voting view
-                    mvp_view = MVPView(
-                        str(self.match_id),
-                        winner_user.id,
-                        winner_user.display_name,
-                        loser_user.id,
-                        loser_user.display_name,
+
+                    vote_view = VoteView(
+                        self.match_id,
+                        match_data['team1_name'],
+                        match_data['team2_name'],
                         self.bot
                     )
                     
-                    # Send result message
-                    result_message = await results_channel.send(embed=result_embed, view=mvp_view)
-                    mvp_view.message = result_message
-                    
-                    # Save match result to database
-                    await db.save_match_result(
-                        match_id=str(self.match_id),
-                        match_number=match_data['match_number'],
-                        winner_id=winner_user.id,
-                        loser_id=loser_user.id,
-                        winner_score=winner_score,
-                        loser_score=loser_score,
-                        screenshot_url=attachment.url,
-                        result_message_id=result_message.id,
-                        result_channel_id=results_channel.id
-                    )
-                    
-                    # Log match result to scrimmish logs channel
-                    logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
-                    if logs_channel_id:
-                        logs_channel = channel.guild.get_channel(int(logs_channel_id))
-                        if logs_channel:
-                            log_embed = discord.Embed(
-                                title=f"🏆 Match #{match_data['match_number']:04d} Complete",
-                                color=0xFFD700
-                            )
-                            log_embed.add_field(
-                                name="Winner",
-                                value=f"{winner_user.mention} ({winner_ign})\n**Score:** {winner_score}",
-                                inline=True
-                            )
-                            log_embed.add_field(
-                                name="Loser",
-                                value=f"{loser_user.mention} ({loser_ign})\n**Score:** {loser_score}",
-                                inline=True
-                            )
-                            if winner_stats and loser_stats:
-                                log_embed.add_field(
-                                    name="MMR Changes",
-                                    value=f"**{winner_user.mention}:** {winner_stats['mmr']:,} (+32)\n**{loser_user.mention}:** {loser_stats['mmr']:,} (-27)",
-                                    inline=False
-                                )
-                            log_embed.add_field(
-                                name="Result Posted",
-                                value=f"[View in {results_channel.mention}]({result_message.jump_url})",
-                                inline=False
-                            )
-                            log_embed.timestamp = discord.utils.utcnow()
-                            await logs_channel.send(embed=log_embed)
-            
-            # Update rank tracking before refreshing leaderboards
-            await db.update_all_ranks()
-            
-            # Update all active leaderboards
-            await update_all_leaderboards()
-            
-            # Clean up match channels after 30 seconds
-            await asyncio.sleep(30)
-            try:
-                await channel.delete()
-                await match_data['voice_channel'].delete()
-            except:
-                pass
-            
-            if self.match_id in active_matches:
-                del active_matches[self.match_id]
+                    result_message = await results_channel.send(embed=result_embed, view=vote_view)
+                    vote_view.message = result_message
+                    match_data['result_message_id'] = result_message.id
+                    match_data['result_channel_id'] = results_channel.id
+                else:
+                    await channel.send("⚠️ queue-results channel not found. Configure QUEUE_RESULTS_CHANNEL_ID correctly.")
+            else:
+                await channel.send("⚠️ QUEUE_RESULTS_CHANNEL_ID is not configured.")
+
+            match_data['processing_ss'] = False
             
         except Exception as e:
             match_data['processing_ss'] = False
             error_embed = discord.Embed(
                 title="❌ Error Processing Screenshot",
-                description=f"Could not process the screenshot. Please make sure it's a clear image of the final scoreboard.\n\nError: {str(e)}",
+                description=f"Could not process the screenshot. Please try again.\n\nError: {str(e)}",
                 color=0xFF0000
             )
             await channel.send(embed=error_embed)
@@ -978,17 +728,16 @@ class VoteButton(discord.ui.Button):
         # Check if any team has 2 votes
         team1_name = match_data['team1_name']
         team2_name = match_data['team2_name']
-        
+        await interaction.response.send_message("✅ Vote recorded!", ephemeral=True)
+
         if match_data['votes'][team1_name] >= 2:
             await self.view.finalize_match(self.match_id, team1_name, interaction)
         elif match_data['votes'][team2_name] >= 2:
             await self.view.finalize_match(self.match_id, team2_name, interaction)
-        else:
-            await interaction.response.defer()
 
 class VoteView(discord.ui.View):
     """View containing voting buttons"""
-    def __init__(self, match_id: str, team1_name: str, team2_name: str, bot):
+    def __init__(self, match_id: int, team1_name: str, team2_name: str, bot):
         super().__init__(timeout=None)
         self.match_id = match_id
         self.team1_name = team1_name
@@ -1011,7 +760,7 @@ class VoteView(discord.ui.View):
         match_number = match_data['match_number']
         
         embed = discord.Embed(
-            title=f"Winner For Queue#{match_number:04d}",
+            title=f"🏆 Winner For Queue#{match_number:04d}🏆",
             color=0xED4245
         )
         
@@ -1044,6 +793,34 @@ class VoteView(discord.ui.View):
         match_data = active_matches.get(match_id)
         if not match_data:
             return
+
+        winner_member = match_data['player1'] if winner_name == match_data['team1_name'] else match_data['player2']
+        loser_member = match_data['player2'] if winner_member.id == match_data['player1'].id else match_data['player1']
+
+        winner_stats = await db.update_player_stats(winner_member.id, won=True, mmr_change=32)
+        loser_stats = await db.update_player_stats(loser_member.id, won=False, mmr_change=-27)
+
+        if interaction.guild:
+            if winner_stats:
+                await update_player_rank_role(interaction.guild, winner_member.id, winner_stats['mmr'])
+            if loser_stats:
+                await update_player_rank_role(interaction.guild, loser_member.id, loser_stats['mmr'])
+
+        result_message_id = match_data.get('result_message_id')
+        result_channel_id = match_data.get('result_channel_id')
+        screenshot_url = match_data.get('screenshot_url')
+
+        await db.save_match_result(
+            match_id=str(match_id),
+            match_number=match_data['match_number'],
+            winner_id=winner_member.id,
+            loser_id=loser_member.id,
+            winner_score=0,
+            loser_score=0,
+            screenshot_url=screenshot_url,
+            result_message_id=result_message_id,
+            result_channel_id=result_channel_id
+        )
         
         # Disable all buttons
         for item in self.children:
@@ -1051,7 +828,7 @@ class VoteView(discord.ui.View):
         
         # Update final embed
         embed = discord.Embed(
-            title=f"Winner For Queue#{match_data['match_number']:04d}",
+            title=f"🏆 Winner For Queue#{match_data['match_number']:04d}🏆",
             description=f"**{winner_name}** wins!",
             color=0x00FF00
         )
@@ -1072,6 +849,9 @@ class VoteView(discord.ui.View):
         
         if self.message:
             await self.message.edit(embed=embed, view=self)
+
+        await db.update_all_ranks()
+        await update_all_leaderboards()
         
         # Send to logs channel
         await self.send_match_logs(match_data, winner_name)
@@ -1173,7 +953,7 @@ class SubRequestView(discord.ui.View):
             match_data['team2_name'] = str(substitute.display_name)
         
         # Update channel permissions - give sub full access
-        await text_channel.set_permissions(substitute, read_messages=True, send_messages=True)
+        await text_channel.set_permissions(substitute, read_messages=True, send_messages=True, attach_files=True)
         await voice_channel.set_permissions(substitute, connect=True, speak=True)
         
         # Remove original player from channels
@@ -1423,9 +1203,9 @@ class QueueButton(discord.ui.Button):
             # Set up permissions - only these 2 players can see the channels
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False, view_channel=False),
-                member1: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True, connect=True, speak=True),
-                member2: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True, connect=True, speak=True),
-                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
+                member1: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, view_channel=True, connect=True, speak=True),
+                member2: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, view_channel=True, connect=True, speak=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, manage_channels=True, view_channel=True)
             }
             
             # Create private text channel - same name as voice for easy pairing
@@ -2916,7 +2696,7 @@ BOTTOM_SCORE: 8"""
         original_player = interaction.user
         
         # Give substitute access to the match channel
-        await text_channel.set_permissions(player, read_messages=True, send_messages=True)
+        await text_channel.set_permissions(player, read_messages=True, send_messages=True, attach_files=True)
         
         # Create unique request ID
         request_id = f"{text_channel_id}_{player.id}_{int(datetime.utcnow().timestamp())}"
@@ -3317,6 +3097,7 @@ BOTTOM_SCORE: 8"""
         overwrites = discord.PermissionOverwrite(
             read_messages=True,
             send_messages=True,
+            attach_files=True,
             view_channel=True,
             connect=True,
             speak=True
