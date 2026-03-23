@@ -3,6 +3,7 @@ from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
 from PIL import Image
 import torch
 import io
+import os
 
 app = FastAPI()
 
@@ -10,12 +11,22 @@ app = FastAPI()
 API_TOKEN = "my_secure_token"
 
 print("Loading model... (this will take time once)")
+
+# Force offline/local cache usage to avoid startup crashes when DNS/internet is unavailable.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 model = Qwen2VLForConditionalGeneration.from_pretrained(
     "Qwen/Qwen2-VL-2B-Instruct",
+    local_files_only=True,
     torch_dtype=torch.float16,
     device_map="auto"
 )
-processor = AutoProcessor.from_pretrained("Qwen/Qwen2-VL-2B-Instruct")
+processor = AutoProcessor.from_pretrained(
+    "Qwen/Qwen2-VL-2B-Instruct",
+    local_files_only=True,
+    use_fast=False
+)
 print("Model loaded.")
 
 @app.post("/ocr")
