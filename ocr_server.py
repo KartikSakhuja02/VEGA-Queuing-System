@@ -20,9 +20,16 @@ print("Model loaded.")
 
 @app.post("/ocr")
 async def ocr(file: UploadFile = File(...), authorization: str = Header(None)):
-    
-    # 🔐 Basic auth check
-    if authorization != f"Bearer {API_TOKEN}":
+    # Debug auth header to diagnose 401 issues
+    print(f"[ocr] Authorization header raw: {authorization!r}")
+
+    # 🔐 Basic auth check (robust bearer parsing)
+    auth_value = (authorization or "").strip()
+    if not auth_value.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    token = auth_value.split(" ", 1)[1].strip()
+    if token != API_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     image_bytes = await file.read()
