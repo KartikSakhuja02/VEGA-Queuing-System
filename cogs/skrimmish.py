@@ -9,6 +9,7 @@ from typing import Optional
 from datetime import datetime
 import io
 import re
+import json
 import base64
 import aiohttp
 import traceback
@@ -2172,6 +2173,61 @@ class SkrimmishCog(commands.Cog):
                 ephemeral=True
             )
     
+    async def _request_external_ocr(
+        self,
+        url: str,
+        headers: dict,
+        file_path: str,
+        filename: str,
+        content_type: Optional[str],
+    ) -> dict:
+        """Call external OCR API with multipart upload and debug logging."""
+
+        def read_file_bytes(path: str) -> bytes:
+            with open(path, "rb") as file_obj:
+                return file_obj.read()
+
+        file_exists = await asyncio.to_thread(os.path.exists, file_path)
+        file_size = await asyncio.to_thread(os.path.getsize, file_path) if file_exists else 0
+
+        # Debug logs before request
+        print(f"[test-ocr] URL: {url}")
+        print(f"[test-ocr] Headers: {headers}")
+        print(f"[test-ocr] File exists: {file_exists}, size: {file_size} bytes")
+
+        file_bytes = await asyncio.to_thread(read_file_bytes, file_path)
+
+        data = aiohttp.FormData()
+        data.add_field(
+            "file",
+            file_bytes,
+            filename=filename,
+            content_type=content_type or "application/octet-stream",
+        )
+
+        timeout = aiohttp.ClientTimeout(total=30)
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=data, headers=headers, timeout=timeout) as response:
+                response_text = await response.text()
+
+                # Debug logs after request
+                print(f"[test-ocr] Response status: {response.status}")
+                print(f"[test-ocr] Response body: {response_text}")
+
+                if response.status != 200:
+                    raise RuntimeError(f"OCR API returned {response.status}: {response_text[:300]}")
+
+                try:
+                    payload = json.loads(response_text)
+                except json.JSONDecodeError:
+                    raise ValueError(f"Invalid JSON response: {response_text[:300]}")
+
+                if not isinstance(payload, dict):
+                    raise ValueError("Invalid response format: expected JSON object.")
+
+                return payload
+
     @app_commands.command(name="test-ocr", description="Test OCR using external OCR API")
     async def test_ocr(self, interaction: discord.Interaction, attachment: Optional[discord.Attachment] = None):
         """Send an attached image to remote OCR API and return extracted text."""
@@ -2201,37 +2257,18 @@ class SkrimmishCog(commands.Cog):
 
             await attachment.save(temp_path)
 
-            def read_temp_file(path: str) -> bytes:
-                with open(path, "rb") as file_obj:
-                    return file_obj.read()
-
-            file_bytes = await asyncio.to_thread(read_temp_file, temp_path)
-
-            url = "https://sammy-glaring-heartenedly.ngrok-free.dev"
+            url = "https://sammy-glaring-heartenedly.ngrok-free.dev/ocr"
             headers = {
                 "Authorization": "Bearer my_secure_token"
             }
-            timeout = aiohttp.ClientTimeout(total=30)
 
-            form = aiohttp.FormData()
-            form.add_field(
-                "file",
-                file_bytes,
+            payload = await self._request_external_ocr(
+                url=url,
+                headers=headers,
+                file_path=temp_path,
                 filename=attachment.filename or "ocr_upload.png",
-                content_type=attachment.content_type or "application/octet-stream"
+                content_type=attachment.content_type,
             )
-
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(url, headers=headers, data=form) as response:
-                    if response.status != 200:
-                        error_body = await response.text()
-                        raise RuntimeError(f"OCR API returned {response.status}: {error_body[:300]}")
-
-                    try:
-                        payload = await response.json(content_type=None)
-                    except Exception:
-                        raw_body = await response.text()
-                        raise ValueError(f"Invalid JSON response: {raw_body[:300]}")
 
             extracted_text = payload.get("text") if isinstance(payload, dict) else None
             if not isinstance(extracted_text, str):
